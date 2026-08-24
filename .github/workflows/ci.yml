@@ -1,0 +1,53 @@
+name: CI Quality Gate
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  rust-check:
+    name: Rust Workspace (Core, Client, Daemon)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run Cargo Tests
+        run: cargo test --workspace --verbose
+
+  typescript-sdk:
+    name: TypeScript SDK (@ttagy/client)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run Node Tests
+        run: |
+          cd packages/ttagy-client
+          npm test
+
+  contracts-lint:
+    name: Draft-07 Contracts Schema Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate Schemas
+        run: |
+          node -e '
+            const fs = require("fs");
+            const files = fs.readdirSync("specs/contracts").filter(f => f.endsWith(".json"));
+            for (const f of files) {
+              const c = JSON.parse(fs.readFileSync(`specs/contracts/${f}`));
+              if (c["$schema"] !== "http://json-schema.org/draft-07/schema#") {
+                console.error(`Invalid schema in ${f}`);
+                process.exit(1);
+              }
+            }
+            console.log(`Validated ${files.length} contracts successfully.`);
+          '

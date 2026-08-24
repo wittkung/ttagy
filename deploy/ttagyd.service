@@ -1,0 +1,15 @@
+[Unit]
+Description=TTAgy Private Agent Host Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/ttagyd --host 0.0.0.0 --port 8970 --token "your-secret-token"
+Restart=always
+RestartSec=5s
+LimitNOFILE=65535
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+
+[Install]
+WantedBy=multi-user.target
