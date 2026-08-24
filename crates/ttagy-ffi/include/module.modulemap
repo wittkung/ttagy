@@ -1,0 +1,4 @@
+module TtagyC [system] {
+    header "ttagy.h"
+    export *
+}

@@ -1,0 +1,18 @@
+[package]
+name = "ttagy-ffi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "C-ABI & Native FFI Super-Bridge for TTAgy"
+
+[lib]
+name = "ttagy"
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[dependencies]
+ttagy-core = { path = "../ttagy-core" }
+ttagy-client = { path = "../ttagy-client" }
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

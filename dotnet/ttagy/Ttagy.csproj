@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Ttagy.Sdk</RootNamespace>
+    <PackageId>Ttagy.Sdk</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Antigravity Developer</Authors>
+    <Description>High-performance .NET 8+ Client SDK for TTAgy Private Node Daemon</Description>
+  </PropertyGroup>
+
+</Project>

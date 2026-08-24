@@ -1,6 +1,5 @@
-//! 统一 AGY 客户端入口 (支持 UDS IPC、Remote TCP HTTP/SSE 与 Local Process Fallback)
-
 use futures_util::StreamExt;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -8,7 +7,7 @@ use tokio_stream::wrappers::ReceiverStream;
 pub use ttagy_core::{TtagyRequest, TtagyResponse, TtagyStreamEvent};
 use crate::fallback::FallbackDriver;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientConfig {
     /// 远程私有 Agent 节点地址，如 "http://127.0.0.1:8970"
     pub base_url: Option<String>,

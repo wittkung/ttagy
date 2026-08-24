@@ -1022,6 +1022,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ttagy-ffi"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+ "ttagy-client",
+ "ttagy-core",
+]
+
+[[package]]
 name = "ttagyd"
 version = "0.1.0"
 dependencies = [
