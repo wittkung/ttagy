@@ -1,10 +1,13 @@
-//! TTAgy 宿主节点守护服务 (Private Agent Host Node Daemon)
+//! TTAgy 宿主节点守护服务 (Private Agent Host Node Daemon & Subagent Mesh Runtime)
 //!
 //! 支持 Unix Domain Socket (/tmp/ttagy.sock) 极速本地 IPC 与 TCP HTTP/SSE 远程双模并发监听。
 
 pub mod mcp_manager;
+pub mod message_bus;
 pub mod session_store;
+pub mod subagent_mesh;
 pub mod worker_pool;
+pub mod workspace_manager;
 mod v1;
 
 use axum::{
@@ -16,14 +19,17 @@ use axum::{
     Router,
 };
 use mcp_manager::McpManager;
+use message_bus::MessageBus;
 use session_store::SessionStore;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use subagent_mesh::SubagentMesh;
 use tokio::sync::Semaphore;
 use tower::Service;
 use tower_http::cors::{Any, CorsLayer};
 use v1::AppState;
+use workspace_manager::WorkspaceManager;
 
 struct Config {
     host: String,
@@ -116,8 +122,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             p
         });
 
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let worktree_base = storage_dir.join("workspaces");
+
     let session_store = Arc::new(SessionStore::new(storage_dir));
     let mcp_manager = Arc::new(McpManager::new());
+    let workspace_manager = WorkspaceManager::new(current_dir, worktree_base);
+    let message_bus = Arc::new(MessageBus::new());
+    let subagent_mesh = Arc::new(SubagentMesh::new(config.max_concurrency * 4));
+
+    // 启动前孤儿 Worktree 对账与自愈
+    let _ = workspace_manager.reconcile_orphans().await;
 
     let state = Arc::new(AppState {
         auth_token: config.token.clone(),
@@ -125,6 +140,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         semaphore: Arc::new(Semaphore::new(config.max_concurrency)),
         session_store,
         mcp_manager,
+        workspace_manager,
+        message_bus,
+        subagent_mesh,
     });
 
     let cors = CorsLayer::new()

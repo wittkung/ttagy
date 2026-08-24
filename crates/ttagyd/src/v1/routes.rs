@@ -1,4 +1,4 @@
-//! V1 专有 RESTful 与 SSE 接口实现 (Superset API Control Plane)
+//! V1 专有 RESTful 与 SSE 接口实现 (Superset API & Subagent Mesh Control Plane)
 
 use axum::{
     extract::{Path, State},
@@ -9,6 +9,7 @@ use axum::{
     Json, Router,
 };
 use futures_util::Stream;
+use serde::Deserialize;
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -25,7 +26,10 @@ use ttagy_core::{
     SandboxGuard, StderrDrainer, TtagyDetector,
 };
 use crate::mcp_manager::{McpManager, McpServerConfig};
+use crate::message_bus::{ActorMessage, MessageBus};
 use crate::session_store::{SessionMessage, SessionStore};
+use crate::subagent_mesh::{SubagentMesh, SubagentSpec};
+use crate::workspace_manager::WorkspaceManager;
 
 pub struct AppState {
     pub auth_token: Option<String>,
@@ -33,6 +37,10 @@ pub struct AppState {
     pub semaphore: Arc<tokio::sync::Semaphore>,
     pub session_store: Arc<SessionStore>,
     pub mcp_manager: Arc<McpManager>,
+    #[allow(dead_code)]
+    pub workspace_manager: Arc<WorkspaceManager>,
+    pub message_bus: Arc<MessageBus>,
+    pub subagent_mesh: Arc<SubagentMesh>,
 }
 
 /// 带有 Stream Drop 感知的流包装器 (客户端连接断开时立即触发 Cancel)
@@ -77,6 +85,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/sessions/:id", get(get_session_handler).delete(delete_session_handler))
         .route("/sessions/:id/messages", post(append_message_handler))
         .route("/sessions/:id/compact", post(compact_session_handler))
+        // 4. Subagent Mesh 协作网格
+        .route("/subagents", get(list_subagents_handler))
+        .route("/subagents/invoke", post(invoke_subagents_handler))
+        .route("/subagents/message", post(send_subagent_message_handler))
+        .route("/subagents/wait", post(wait_subagent_handler))
+        .route("/subagents/kill_all", post(kill_all_subagents_handler))
+        .route("/subagents/:id", get(get_subagent_handler))
+        .route("/subagents/:id/kill", post(kill_cascade_subagent_handler))
         .with_state(state)
 }
 
@@ -224,6 +240,132 @@ async fn compact_session_handler(
         "messages_after": after
     })))
 }
+
+// --------------------------- Subagent Mesh Handlers ---------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct InvokeSubagentRequest {
+    pub parent_id: Option<String>,
+    pub subagents: Vec<SubagentSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendMessageRequest {
+    pub sender_id: String,
+    pub recipient_id: String,
+    pub content: String,
+    pub reply_to: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WaitSubagentRequest {
+    pub waiter_id: String,
+    pub waitee_id: String,
+    #[serde(default = "default_wait_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+fn default_wait_timeout_ms() -> u64 {
+    5000
+}
+
+async fn list_subagents_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let nodes = state.subagent_mesh.list_subagents().await;
+    Json(serde_json::json!({
+        "mesh_version": "v1",
+        "total": nodes.len(),
+        "active_nodes": nodes
+    }))
+}
+
+async fn invoke_subagents_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<InvokeSubagentRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let spawned = state.subagent_mesh.invoke_subagents(payload.parent_id, payload.subagents).await
+        .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, e))?;
+
+    Ok((StatusCode::CREATED, Json(serde_json::json!({
+        "status": "spawned",
+        "spawned_subagents": spawned
+    }))))
+}
+
+async fn send_subagent_message_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<SendMessageRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let msg = ActorMessage {
+        message_id: format!("msg_{}", uuid::Uuid::new_v4()),
+        sender_id: payload.sender_id,
+        recipient_id: payload.recipient_id,
+        content: payload.content,
+        reply_to: payload.reply_to,
+        created_at: now,
+    };
+
+    state.message_bus.send_message(msg).await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
+    Ok(Json(serde_json::json!({ "status": "delivered" })))
+}
+
+async fn wait_subagent_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<WaitSubagentRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    state.subagent_mesh.wait_for_peer(&payload.waiter_id, &payload.waitee_id).await
+        .map_err(|e| (StatusCode::CONFLICT, e))?;
+
+    let timeout_duration = Duration::from_millis(payload.timeout_ms.min(5000));
+    tokio::time::sleep(timeout_duration).await;
+
+    state.subagent_mesh.release_wait_for_peer(&payload.waiter_id, &payload.waitee_id).await;
+
+    Ok(Json(serde_json::json!({
+        "status": "waited",
+        "waiter": payload.waiter_id,
+        "waitee": payload.waitee_id
+    })))
+}
+
+async fn kill_all_subagents_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let killed = state.subagent_mesh.kill_all().await;
+    Json(serde_json::json!({
+        "status": "all_killed",
+        "count": killed.len(),
+        "terminated_subagents": killed
+    }))
+}
+
+async fn get_subagent_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let node = state.subagent_mesh.get_subagent(&id).await
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Subagent '{}' not found", id)))?;
+    Ok(Json(node))
+}
+
+async fn kill_cascade_subagent_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let killed = state.subagent_mesh.kill_cascade(&id).await;
+    Json(serde_json::json!({
+        "status": "killed_cascade",
+        "root_target": id,
+        "total_terminated": killed.len(),
+        "terminated_subagents": killed
+    }))
+}
+
+// --------------------------- Chat Stream Handler ---------------------------
 
 async fn stream_handler(
     State(state): State<Arc<AppState>>,

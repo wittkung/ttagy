@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TtagySubagentMeshContract",
+  "description": "Draft-07 strongly typed schema for Subagent Mesh DAG Topology, Actor Messaging, Deadlock Detection, and Cascading Termination",
+  "definitions": {
+    "SubagentRole": {
+      "type": "string",
+      "enum": [
+        "researcher",
+        "architect",
+        "coder",
+        "tester",
+        "reviewer",
+        "security_auditor",
+        "custom"
+      ]
+    },
+    "WorkspaceIsolationMode": {
+      "type": "string",
+      "enum": ["inherit", "branch", "share"],
+      "default": "branch"
+    },
+    "SubagentStatus": {
+      "type": "string",
+      "enum": [
+        "spawned",
+        "running",
+        "waiting",
+        "deadlocked",
+        "completed",
+        "failed",
+        "terminated"
+      ]
+    },
+    "SubagentInvokeSpec": {
+      "type": "object",
+      "required": ["role", "prompt"],
+      "properties": {
+        "subagent_id": { "type": "string" },
+        "role": { "$ref": "#/definitions/SubagentRole" },
+        "prompt": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "default": "gemini-3.7-flash-high" },
+        "effort": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "none"],
+          "default": "high"
+        },
+        "workspace_mode": { "$ref": "#/definitions/WorkspaceIsolationMode" },
+        "timeout_secs": { "type": "integer", "minimum": 1, "default": 300 }
+      },
+      "additionalProperties": false
+    },
+    "SubagentInvokeBatchRequest": {
+      "type": "object",
+      "required": ["parent_id", "subagents"],
+      "properties": {
+        "parent_id": { "type": "string" },
+        "subagents": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/definitions/SubagentInvokeSpec" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "SubagentMessageRequest": {
+      "type": "object",
+      "required": ["sender_id", "recipient_id", "content"],
+      "properties": {
+        "sender_id": { "type": "string" },
+        "recipient_id": { "type": "string" },
+        "content": { "type": "string" },
+        "reply_to": { "type": ["string", "null"] },
+        "is_blocking_wait": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": false
+    },
+    "SubagentNodeInfo": {
+      "type": "object",
+      "required": ["id", "depth", "status", "created_at"],
+      "properties": {
+        "id": { "type": "string" },
+        "parent_id": { "type": ["string", "null"] },
+        "depth": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "role": { "$ref": "#/definitions/SubagentRole" },
+        "status": { "$ref": "#/definitions/SubagentStatus" },
+        "workspace_path": { "type": ["string", "null"] },
+        "workspace_mode": { "$ref": "#/definitions/WorkspaceIsolationMode" },
+        "children": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "created_at": { "type": "integer" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "active_nodes": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/SubagentNodeInfo" }
+    }
+  }
+}
