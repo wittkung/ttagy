@@ -6,6 +6,7 @@ pub mod mcp_manager;
 pub mod message_bus;
 pub mod session_store;
 pub mod subagent_mesh;
+pub mod telemetry;
 pub mod worker_pool;
 pub mod workspace_manager;
 mod v1;
@@ -16,6 +17,7 @@ use axum::{
     http::{Method, StatusCode},
     middleware::{self, Next},
     response::Response,
+    routing::get,
     Router,
 };
 use mcp_manager::McpManager;
@@ -25,6 +27,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subagent_mesh::SubagentMesh;
+use telemetry::{MetricsCollector, TraceManager};
 use tokio::sync::Semaphore;
 use tower::Service;
 use tower_http::cors::{Any, CorsLayer};
@@ -130,6 +133,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let workspace_manager = WorkspaceManager::new(current_dir, worktree_base);
     let message_bus = Arc::new(MessageBus::new());
     let subagent_mesh = Arc::new(SubagentMesh::new(config.max_concurrency * 4));
+    let metrics_collector = MetricsCollector::new();
+    let trace_manager = Arc::new(TraceManager::new(1000));
 
     // 启动前孤儿 Worktree 对账与自愈
     let _ = workspace_manager.reconcile_orphans().await;
@@ -143,6 +148,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         workspace_manager,
         message_bus,
         subagent_mesh,
+        metrics_collector: metrics_collector.clone(),
+        trace_manager,
     });
 
     let cors = CorsLayer::new()
@@ -151,7 +158,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_headers(Any);
 
     let auth_state = state.clone();
+    let metrics_state = state.clone();
+
     let app = Router::new()
+        // Prometheus metrics 端点 (免鉴权)
+        .route("/metrics", get(move || {
+            let s = metrics_state.clone();
+            async move {
+                let permits = s.semaphore.available_permits();
+                s.metrics_collector.render_prometheus(permits)
+            }
+        }))
         .nest("/api/v1", v1::router(state.clone()))
         .layer(middleware::from_fn(move |req, next| {
             let s = auth_state.clone();
@@ -226,6 +243,10 @@ async fn auth_middleware(
     req: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    if req.uri().path() == "/metrics" {
+        return Ok(next.run(req).await);
+    }
+
     if let Some(ref required_token) = state.auth_token {
         if !required_token.is_empty() {
             if let Some(auth_header) = req.headers().get("Authorization") {

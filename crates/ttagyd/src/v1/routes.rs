@@ -1,4 +1,4 @@
-//! V1 专有 RESTful 与 SSE 接口实现 (Superset API & Subagent Mesh Control Plane)
+//! V1 专有 RESTful 与 SSE 接口实现 (Superset API, Mesh & Telemetry Control Plane)
 
 use axum::{
     extract::{Path, State},
@@ -29,6 +29,7 @@ use crate::mcp_manager::{McpManager, McpServerConfig};
 use crate::message_bus::{ActorMessage, MessageBus};
 use crate::session_store::{SessionMessage, SessionStore};
 use crate::subagent_mesh::{SubagentMesh, SubagentSpec};
+use crate::telemetry::{MetricsCollector, TraceManager};
 use crate::workspace_manager::WorkspaceManager;
 
 pub struct AppState {
@@ -41,6 +42,8 @@ pub struct AppState {
     pub workspace_manager: Arc<WorkspaceManager>,
     pub message_bus: Arc<MessageBus>,
     pub subagent_mesh: Arc<SubagentMesh>,
+    pub metrics_collector: Arc<MetricsCollector>,
+    pub trace_manager: Arc<TraceManager>,
 }
 
 /// 带有 Stream Drop 感知的流包装器 (客户端连接断开时立即触发 Cancel)
@@ -93,6 +96,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/subagents/kill_all", post(kill_all_subagents_handler))
         .route("/subagents/:id", get(get_subagent_handler))
         .route("/subagents/:id/kill", post(kill_cascade_subagent_handler))
+        // 5. Telemetry & Observability
+        .route("/telemetry/stats", get(get_telemetry_stats_handler))
+        .route("/telemetry/traces/:id", get(get_trace_spans_handler))
+        .route("/telemetry/spans", get(get_recent_spans_handler))
         .with_state(state)
 }
 
@@ -365,6 +372,27 @@ async fn kill_cascade_subagent_handler(
     }))
 }
 
+// --------------------------- Telemetry Handlers ---------------------------
+
+async fn get_telemetry_stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let permits = state.semaphore.available_permits();
+    let stats = state.metrics_collector.get_snapshot(permits);
+    Json(serde_json::json!({ "stats": stats }))
+}
+
+async fn get_trace_spans_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let spans = state.trace_manager.get_trace_spans(&id).await;
+    Json(serde_json::json!({ "trace_id": id, "spans": spans }))
+}
+
+async fn get_recent_spans_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let spans = state.trace_manager.get_recent_spans(50).await;
+    Json(serde_json::json!({ "spans": spans }))
+}
+
 // --------------------------- Chat Stream Handler ---------------------------
 
 async fn stream_handler(
@@ -391,6 +419,7 @@ async fn stream_handler(
     };
     let effort = payload.effort.clone().unwrap_or_else(|| "low".into());
     let timeout_secs = payload.timeout_secs.max(15);
+    let metrics = state.metrics_collector.clone();
 
     tokio::spawn(async move {
         let _permit = permit;
@@ -422,6 +451,7 @@ async fn stream_handler(
                 if let Ok(json_str) = serde_json::to_string(&err_event) {
                     let _ = tx.send(Ok(Event::default().data(json_str))).await;
                 }
+                metrics.record_request(false, 0, 0, 0);
                 return;
             }
         };
@@ -513,6 +543,7 @@ async fn stream_handler(
                 if let Ok(json_str) = serde_json::to_string(&err_event) {
                     let _ = tx.send(Ok(Event::default().data(json_str))).await;
                 }
+                metrics.record_request(false, 0, 0, 0);
                 return;
             }
         };
@@ -521,6 +552,7 @@ async fn stream_handler(
             Some(o) => o,
             None => {
                 let _ = child.kill().await;
+                metrics.record_request(false, 0, 0, 0);
                 return;
             }
         };
@@ -537,11 +569,13 @@ async fn stream_handler(
 
                 _ = worker_cancel_token.cancelled() => {
                     let _ = child.kill().await;
+                    metrics.record_request(false, 0, 0, 0);
                     break;
                 }
 
                 _ = tx.closed() => {
                     let _ = child.kill().await;
+                    metrics.record_request(false, 0, 0, 0);
                     break;
                 }
 
@@ -589,17 +623,26 @@ async fn stream_handler(
                                         let final_thinking = tc.or_else(|| {
                                              if accumulated_thinking.is_empty() { None } else { Some(accumulated_thinking.clone()) }
                                         });
+                                        let prompt_tokens = usage.as_ref().and_then(|u| u.prompt_tokens);
+                                        let output_tokens = usage.as_ref().and_then(|u| u.output_tokens);
+
                                         let ev = TtagyStreamEvent::Done {
                                             session_id: session_id.clone(),
                                             full_content: accumulated_text.clone(),
                                             thinking_content: final_thinking,
                                             elapsed_ms,
-                                            prompt_tokens: usage.as_ref().and_then(|u| u.prompt_tokens),
-                                            output_tokens: usage.as_ref().and_then(|u| u.output_tokens),
+                                            prompt_tokens,
+                                            output_tokens,
                                         };
                                         if let Ok(json_str) = serde_json::to_string(&ev) {
                                             let _ = tx.send(Ok(Event::default().data(json_str))).await;
                                         }
+                                        metrics.record_request(
+                                            true,
+                                            prompt_tokens.unwrap_or(0),
+                                            output_tokens.unwrap_or(0),
+                                            0,
+                                        );
                                         let _ = child.kill().await;
                                         return;
                                     }
@@ -613,6 +656,7 @@ async fn stream_handler(
                                         if let Ok(json_str) = serde_json::to_string(&ev) {
                                             let _ = tx.send(Ok(Event::default().data(json_str))).await;
                                         }
+                                        metrics.record_request(false, 0, 0, 0);
                                         let _ = child.kill().await;
                                         return;
                                     }
@@ -637,6 +681,7 @@ async fn stream_handler(
                                 if let Ok(json_str) = serde_json::to_string(&ev) {
                                     let _ = tx.send(Ok(Event::default().data(json_str))).await;
                                 }
+                                metrics.record_request(false, 0, 0, 0);
                             } else {
                                 let ev = TtagyStreamEvent::Done {
                                     session_id: session_id.clone(),
@@ -649,6 +694,7 @@ async fn stream_handler(
                                 if let Ok(json_str) = serde_json::to_string(&ev) {
                                     let _ = tx.send(Ok(Event::default().data(json_str))).await;
                                 }
+                                metrics.record_request(true, 0, 0, 0);
                             }
                             break;
                         }
@@ -663,6 +709,7 @@ async fn stream_handler(
                             if let Ok(json_str) = serde_json::to_string(&err_event) {
                                 let _ = tx.send(Ok(Event::default().data(json_str))).await;
                             }
+                            metrics.record_request(false, 0, 0, 0);
                             break;
                         }
                         Err(_) => {
@@ -685,6 +732,7 @@ async fn stream_handler(
                             if let Ok(json_str) = serde_json::to_string(&err_event) {
                                 let _ = tx.send(Ok(Event::default().data(json_str))).await;
                             }
+                            metrics.record_request(false, 0, 0, 0);
                             break;
                         }
                     }

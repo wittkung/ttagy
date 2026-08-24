@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TtagyTelemetryContract",
+  "description": "Draft-07 schema for W3C Distributed Traces and Real-Time Node Statistics",
+  "definitions": {
+    "TraceSpan": {
+      "type": "object",
+      "required": ["trace_id", "span_id", "name", "start_time_ms", "duration_ms", "status"],
+      "properties": {
+        "trace_id": { "type": "string" },
+        "span_id": { "type": "string" },
+        "parent_span_id": { "type": ["string", "null"] },
+        "name": { "type": "string" },
+        "start_time_ms": { "type": "integer" },
+        "duration_ms": { "type": "number" },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ok", "error", "cancelled"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "NodeStats": {
+      "type": "object",
+      "required": [
+        "uptime_secs",
+        "total_requests",
+        "total_prompt_tokens",
+        "total_output_tokens",
+        "active_workers",
+        "available_permits"
+      ],
+      "properties": {
+        "uptime_secs": { "type": "integer" },
+        "total_requests": { "type": "integer" },
+        "total_prompt_tokens": { "type": "integer" },
+        "total_output_tokens": { "type": "integer" },
+        "total_thinking_tokens": { "type": "integer" },
+        "active_workers": { "type": "integer" },
+        "idle_workers": { "type": "integer" },
+        "available_permits": { "type": "integer" },
+        "deadlocks_prevented": { "type": "integer" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "stats": { "$ref": "#/definitions/NodeStats" },
+    "recent_spans": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/TraceSpan" }
+    }
+  }
+}
