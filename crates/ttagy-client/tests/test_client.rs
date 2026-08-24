@@ -1,5 +1,5 @@
-use agy_client::{ClientBuilder, AgyClient, AgyRequest};
-use agy_core::AgyStreamEvent;
+use ttagy_client::{ClientBuilder, TtagyClient, TtagyRequest};
+use ttagy_core::TtagyStreamEvent;
 
 #[tokio::test]
 async fn test_client_builder_and_fallback_config() {
@@ -8,7 +8,7 @@ async fn test_client_builder_and_fallback_config() {
         .build()
         .expect("构建客户端成功");
 
-    let req = AgyRequest {
+    let req = TtagyRequest {
         prompt: "测试提示词".to_string(),
         model: Some("gemini-3.7-flash".to_string()),
         effort: Some("none".to_string()),

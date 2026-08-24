@@ -22,7 +22,7 @@ def find_agy_binary() -> Optional[str]:
             return p
     return None
 
-class AgyClient:
+class TtagyClient:
     def __init__(self, socket_path: str = "/tmp/agy_daemon.sock", auto_fallback: bool = True):
         self.socket_path = socket_path
         self.auto_fallback = auto_fallback

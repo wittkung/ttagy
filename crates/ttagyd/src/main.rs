@@ -1,4 +1,4 @@
-//! agyd: Antigravity CLI 私有节点守护服务 (Private Agent Host Node)
+//! ttagyd: Antigravity CLI 私有节点守护服务 (Private Agent Host Node)
 
 use std::net::SocketAddr;
 use std::process::Stdio;
@@ -24,7 +24,7 @@ use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
 use tower_http::cors::CorsLayer;
 
-use agy_core::{AgyDetector, AgyRequest, AgyStreamEvent, NdjsonParser, ParsedChunk, SandboxGuard};
+use ttagy_core::{TtagyDetector, TtagyRequest, TtagyStreamEvent, NdjsonParser, ParsedChunk, SandboxGuard};
 
 #[derive(Clone)]
 struct AppState {
@@ -72,10 +72,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("🚀 [agyd] 正在启动 Antigravity 私有 Agent 节点...");
-    let binary = AgyDetector::find_binary().expect("未检测到本地 agy 二进制");
+    println!("🚀 [ttagyd] 正在启动 Antigravity 私有 Agent 节点...");
+    let binary = TtagyDetector::find_binary().expect("未检测到本地 agy 二进制");
     let binary_str = binary.to_string_lossy().to_string();
-    println!("✅ [agyd] 绑定本地 AGY 二进制: {}", binary_str);
+    println!("✅ [ttagyd] 绑定本地 AGY 二进制: {}", binary_str);
 
     let state = AppState {
         auth_token,
@@ -90,11 +90,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(state.clone());
 
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
-    println!("⚡ [agyd] 节点已就绪，正在监听: http://{}", addr);
+    println!("⚡ [ttagyd] 节点已就绪，正在监听: http://{}", addr);
     if state.auth_token.is_some() {
-        println!("🔒 [agyd] 安全鉴权已开启 (Bearer Token Guard Active)");
+        println!("🔒 [ttagyd] 安全鉴权已开启 (Bearer Token Guard Active)");
     } else {
-        println!("⚠️ [agyd] 警告: 未配置 --token，仅限受信任网络运行");
+        println!("⚠️ [ttagyd] 警告: 未配置 --token，仅限受信任网络运行");
     }
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -102,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
-    println!("🛑 [agyd] 服务已安全关闭。");
+    println!("🛑 [ttagyd] 服务已安全关闭。");
     Ok(())
 }
 
@@ -118,7 +118,7 @@ async fn health_handler(State(state): State<AppState>) -> impl IntoResponse {
 async fn stream_handler(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(req): Json<AgyRequest>,
+    Json(req): Json<TtagyRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, axum::Error>>>, StatusCode> {
     // 鉴权校验
     if let Some(ref required_token) = state.auth_token {
@@ -138,7 +138,7 @@ async fn stream_handler(
             Ok(p) => p,
             Err(_) => {
                 let _ = tx.send(Ok(Event::default().data(
-                    serde_json::to_string(&AgyStreamEvent::Error {
+                    serde_json::to_string(&TtagyStreamEvent::Error {
                         session_id: req.session_id.clone(),
                         error_code: "SEMAPHORE_CLOSED".to_string(),
                         error_message: "服务并发调度器已关闭".to_string(),
@@ -149,11 +149,11 @@ async fn stream_handler(
             }
         };
 
-        let sandbox = match SandboxGuard::create("agyd_session", true) {
+        let sandbox = match SandboxGuard::create("ttagyd_session", true) {
             Ok(s) => s,
             Err(e) => {
                 let _ = tx.send(Ok(Event::default().data(
-                    serde_json::to_string(&AgyStreamEvent::Error {
+                    serde_json::to_string(&TtagyStreamEvent::Error {
                         session_id: req.session_id.clone(),
                         error_code: "SANDBOX_FAILED".to_string(),
                         error_message: format!("创建隔离沙箱失败: {}", e),
@@ -193,7 +193,7 @@ async fn stream_handler(
             Ok(c) => c,
             Err(e) => {
                 let _ = tx.send(Ok(Event::default().data(
-                    serde_json::to_string(&AgyStreamEvent::Error {
+                    serde_json::to_string(&TtagyStreamEvent::Error {
                         session_id: session_id.clone(),
                         error_code: "SPAWN_ERROR".to_string(),
                         error_message: format!("启动进程失败: {}", e),
@@ -211,7 +211,7 @@ async fn stream_handler(
 
         let start_time = Instant::now();
         let _ = tx.send(Ok(Event::default().data(
-            serde_json::to_string(&AgyStreamEvent::Init {
+            serde_json::to_string(&TtagyStreamEvent::Init {
                 session_id: session_id.clone(),
                 model: model_name,
                 effort,
@@ -234,7 +234,7 @@ async fn stream_handler(
                         thinking_content.push_str(&delta);
                         let elapsed = start_time.elapsed().as_secs_f64() * 1000.0;
                         let _ = tx.send(Ok(Event::default().data(
-                            serde_json::to_string(&AgyStreamEvent::ThinkingDelta {
+                            serde_json::to_string(&TtagyStreamEvent::ThinkingDelta {
                                 session_id: session_id.clone(),
                                 text_delta: delta,
                                 elapsed_ms: elapsed,
@@ -245,7 +245,7 @@ async fn stream_handler(
                         full_content.push_str(&delta);
                         let elapsed = start_time.elapsed().as_secs_f64() * 1000.0;
                         let _ = tx.send(Ok(Event::default().data(
-                            serde_json::to_string(&AgyStreamEvent::ContentDelta {
+                            serde_json::to_string(&TtagyStreamEvent::ContentDelta {
                                 session_id: session_id.clone(),
                                 text_delta: delta,
                                 accumulated_chars: full_content.chars().count(),
@@ -263,7 +263,7 @@ async fn stream_handler(
                 Ok(Ok(None)) => {
                     let elapsed = start_time.elapsed().as_secs_f64() * 1000.0;
                     let _ = tx.send(Ok(Event::default().data(
-                        serde_json::to_string(&AgyStreamEvent::Done {
+                        serde_json::to_string(&TtagyStreamEvent::Done {
                             session_id: session_id.clone(),
                             full_content,
                             thinking_content: if thinking_content.is_empty() {

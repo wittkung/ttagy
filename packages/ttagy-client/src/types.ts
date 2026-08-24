@@ -2,7 +2,7 @@
  * Local AI 强类型契约定义 (Draft-07 对齐)
  */
 
-export interface AgyRequest {
+export interface TtagyRequest {
   sessionId?: string;
   prompt: string;
   model?: string;
@@ -13,7 +13,7 @@ export interface AgyRequest {
   timeoutSecs?: number;
 }
 
-export interface AgyResponse {
+export interface TtagyResponse {
   sessionId: string;
   status: "success" | "error" | "aborted";
   content: string;
@@ -25,7 +25,7 @@ export interface AgyResponse {
   errorMessage?: string;
 }
 
-export type AgyStreamEvent =
+export type TtagyStreamEvent =
   | {
       type: "agy:init";
       sessionId: string;

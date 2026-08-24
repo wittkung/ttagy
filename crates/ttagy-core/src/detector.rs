@@ -6,9 +6,9 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 #[derive(Debug, Clone)]
-pub struct AgyDetector;
+pub struct TtagyDetector;
 
-impl AgyDetector {
+impl TtagyDetector {
     /// 自动发现本地可用 agy 二进制路径
     pub fn find_binary() -> Option<PathBuf> {
         if let Ok(output) = std::process::Command::new("which").arg("agy").output() {

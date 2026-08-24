@@ -1,4 +1,4 @@
-use agy_core::{NdjsonParser, ParsedChunk, SandboxGuard, AgyStreamEvent};
+use ttagy_core::{NdjsonParser, ParsedChunk, SandboxGuard, TtagyStreamEvent};
 
 #[test]
 fn test_ndjson_parsing() {
@@ -33,7 +33,7 @@ fn test_sandbox_lifecycle() {
 
 #[test]
 fn test_stream_event_serialization() {
-    let ev = AgyStreamEvent::ContentDelta {
+    let ev = TtagyStreamEvent::ContentDelta {
         session_id: "s1".to_string(),
         text_delta: "hello".to_string(),
         accumulated_chars: 5,

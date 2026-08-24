@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "AgyRequestContract",
+  "title": "TtagyRequestContract",
   "description": "Draft-07 strongly-typed request schema for Local AI Agent Daemon and SDK",
   "type": "object",
   "required": ["prompt"],

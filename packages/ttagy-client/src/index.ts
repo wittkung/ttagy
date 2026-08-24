@@ -1,5 +1,5 @@
 import { streamChatFallback } from "./fallback.ts";
-import type { AgyRequest, AgyResponse, AgyStreamEvent } from "./types.ts";
+import type { TtagyRequest, TtagyResponse, TtagyStreamEvent } from "./types.ts";
 
 export type * from "./types.ts";
 export * from "./fallback.ts";
@@ -13,7 +13,7 @@ export interface ClientOptions {
   autoFallback?: boolean;
 }
 
-export class AgyClient {
+export class TtagyClient {
   private baseUrl?: string;
   private authToken?: string;
   private autoFallback: boolean;
@@ -27,7 +27,7 @@ export class AgyClient {
   /**
    * 发起流式对话
    */
-  async *streamChat(request: AgyRequest): AsyncGenerator<AgyStreamEvent, void, unknown> {
+  async *streamChat(request: TtagyRequest): AsyncGenerator<TtagyStreamEvent, void, unknown> {
     // 1. 若配置了远程节点，优先通过 HTTP/SSE 请求远程 Agent 节点
     if (this.baseUrl) {
       try {
@@ -70,7 +70,7 @@ export class AgyClient {
               const dataStr = trimmed.slice(5).trim();
               if (dataStr) {
                 try {
-                  const ev = JSON.parse(dataStr) as AgyStreamEvent;
+                  const ev = JSON.parse(dataStr) as TtagyStreamEvent;
                   yield ev;
                 } catch {
                   // 忽略非 JSON 数据行
@@ -113,7 +113,7 @@ export class AgyClient {
   /**
    * 一次性获取完整推导响应
    */
-  async chat(request: AgyRequest): Promise<AgyResponse> {
+  async chat(request: TtagyRequest): Promise<TtagyResponse> {
     const startTime = Date.now();
     const sessionId = request.sessionId || `session_${startTime}`;
     let fullContent = "";

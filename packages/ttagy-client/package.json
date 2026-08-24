@@ -1,5 +1,5 @@
 {
-  "name": "@agy/client",
+  "name": "@ttagy/client",
   "version": "0.1.0",
   "description": "High-performance TypeScript/JavaScript client SDK for AGY Bridge",
   "type": "module",

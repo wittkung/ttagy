@@ -1,5 +1,5 @@
 [package]
-name = "agy-client"
+name = "ttagy-client"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 description = "Dual-mode Rust Client SDK for AGY Bridge with automatic remote node / process fallback"
 
 [dependencies]
-agy-core = { path = "../agy-core" }
+ttagy-core = { path = "../ttagy-core" }
 tokio = { version = "1.0", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 futures-util = "0.3"

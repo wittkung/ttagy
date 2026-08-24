@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct AgyRequest {
+pub struct TtagyRequest {
     #[serde(default = "generate_session_id")]
     pub session_id: String,
     pub prompt: String,
@@ -21,7 +21,7 @@ pub struct AgyRequest {
     pub timeout_secs: u64,
 }
 
-impl Default for AgyRequest {
+impl Default for TtagyRequest {
     fn default() -> Self {
         Self {
             session_id: generate_session_id(),
@@ -44,7 +44,7 @@ fn default_effort() -> Option<String> { Some("high".to_string()) }
 fn default_timeout_secs() -> u64 { 60 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct AgyResponse {
+pub struct TtagyResponse {
     pub session_id: String,
     pub status: String,
     pub content: String,
@@ -64,7 +64,7 @@ pub struct AgyResponse {
 /// 强类型流式推导事件 (符合 Draft-07 Discriminated Union 规范)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
-pub enum AgyStreamEvent {
+pub enum TtagyStreamEvent {
     #[serde(rename = "agy:init")]
     Init {
         session_id: String,
@@ -106,7 +106,7 @@ pub enum AgyStreamEvent {
     },
 }
 
-impl AgyStreamEvent {
+impl TtagyStreamEvent {
     pub fn event_type(&self) -> &'static str {
         match self {
             Self::Init { .. } => "agy:init",

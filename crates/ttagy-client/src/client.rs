@@ -4,7 +4,7 @@ use futures_util::StreamExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-pub use agy_core::{AgyRequest, AgyResponse, AgyStreamEvent};
+pub use ttagy_core::{TtagyRequest, TtagyResponse, TtagyStreamEvent};
 use crate::fallback::FallbackDriver;
 
 #[derive(Debug, Clone)]
@@ -27,12 +27,12 @@ impl Default for ClientConfig {
     }
 }
 
-pub struct AgyClient {
+pub struct TtagyClient {
     config: ClientConfig,
     http_client: reqwest::Client,
 }
 
-impl AgyClient {
+impl TtagyClient {
     pub fn new(config: ClientConfig) -> Self {
         Self {
             config,
@@ -47,8 +47,8 @@ impl AgyClient {
     /// 执行流式推导，优先尝试远程 Agent 节点，失败时自动降级至本地沙箱 Worker
     pub async fn stream_chat(
         &self,
-        request: AgyRequest,
-    ) -> Result<ReceiverStream<Result<AgyStreamEvent, String>>, String> {
+        request: TtagyRequest,
+    ) -> Result<ReceiverStream<Result<TtagyStreamEvent, String>>, String> {
         // 1. 若配置了远程节点，发起 HTTP/SSE 请求
         if let Some(ref base_url) = self.config.base_url {
             let url = format!("{}/api/v1/stream", base_url.trim_end_matches('/'));
@@ -76,7 +76,7 @@ impl AgyClient {
                                         if trimmed.starts_with("data:") {
                                             let json_str = trimmed.trim_start_matches("data:").trim();
                                             if !json_str.is_empty() {
-                                                if let Ok(ev) = serde_json::from_str::<AgyStreamEvent>(json_str) {
+                                                if let Ok(ev) = serde_json::from_str::<TtagyStreamEvent>(json_str) {
                                                     let _ = tx.send(Ok(ev)).await;
                                                 }
                                             }
@@ -115,7 +115,7 @@ impl AgyClient {
     }
 
     /// 一次性聚合推导
-    pub async fn chat(&self, request: AgyRequest) -> Result<AgyResponse, String> {
+    pub async fn chat(&self, request: TtagyRequest) -> Result<TtagyResponse, String> {
         let start_time = std::time::Instant::now();
         let session_id = request.session_id.clone();
         let model = request.model.clone();
@@ -127,26 +127,26 @@ impl AgyClient {
         while let Some(ev_res) = stream.next().await {
             let ev = ev_res?;
             match ev {
-                AgyStreamEvent::ThinkingDelta { text_delta, .. } => {
+                TtagyStreamEvent::ThinkingDelta { text_delta, .. } => {
                     thinking_content.get_or_insert_with(String::new).push_str(&text_delta);
                 }
-                AgyStreamEvent::ContentDelta { text_delta, .. } => {
+                TtagyStreamEvent::ContentDelta { text_delta, .. } => {
                     final_content.push_str(&text_delta);
                 }
-                AgyStreamEvent::Done { full_content, thinking_content: tc, .. } => {
+                TtagyStreamEvent::Done { full_content, thinking_content: tc, .. } => {
                     final_content = full_content;
                     if tc.is_some() {
                         thinking_content = tc;
                     }
                 }
-                AgyStreamEvent::Error { error_message, .. } => {
+                TtagyStreamEvent::Error { error_message, .. } => {
                     return Err(error_message);
                 }
                 _ => {}
             }
         }
 
-        Ok(AgyResponse {
+        Ok(TtagyResponse {
             session_id,
             status: "success".to_string(),
             content: final_content,
@@ -181,7 +181,7 @@ impl ClientBuilder {
         self
     }
 
-    pub fn build(self) -> Result<AgyClient, String> {
-        Ok(AgyClient::new(self.config))
+    pub fn build(self) -> Result<TtagyClient, String> {
+        Ok(TtagyClient::new(self.config))
     }
 }

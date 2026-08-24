@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "AgyStreamEventContract",
+  "title": "TtagyStreamEventContract",
   "description": "Draft-07 strongly-typed discriminated union contract for Local AI streaming telemetry events",
   "type": "object",
   "required": ["type", "session_id"],

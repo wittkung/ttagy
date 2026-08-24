@@ -8,17 +8,17 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
 
-use agy_core::{
-    AgyDetector, AgyRequest, AgyStreamEvent, NdjsonParser, ParsedChunk, SandboxGuard,
+use ttagy_core::{
+    TtagyDetector, TtagyRequest, TtagyStreamEvent, NdjsonParser, ParsedChunk, SandboxGuard,
 };
 
 pub struct FallbackDriver;
 
 impl FallbackDriver {
     pub async fn stream_chat(
-        request: AgyRequest,
-    ) -> Result<ReceiverStream<Result<AgyStreamEvent, String>>, String> {
-        let binary = AgyDetector::find_binary().ok_or_else(|| {
+        request: TtagyRequest,
+    ) -> Result<ReceiverStream<Result<TtagyStreamEvent, String>>, String> {
+        let binary = TtagyDetector::find_binary().ok_or_else(|| {
             "未检测到 Antigravity CLI (agy) 二进制。请先在终端安装并认证。".to_string()
         })?;
 
@@ -58,7 +58,7 @@ impl FallbackDriver {
 
         tokio::spawn(async move {
             let _keep_sandbox = sandbox; // 保持沙箱直到任务完成
-            let _ = tx.send(Ok(AgyStreamEvent::Init {
+            let _ = tx.send(Ok(TtagyStreamEvent::Init {
                 session_id: session_id.clone(),
                 model: model_name,
                 effort,
@@ -80,7 +80,7 @@ impl FallbackDriver {
                             ParsedChunk::ThinkingDelta(delta) => {
                                 thinking_content.push_str(&delta);
                                 let elapsed = start_time.elapsed().as_secs_f64() * 1000.0;
-                                let _ = tx.send(Ok(AgyStreamEvent::ThinkingDelta {
+                                let _ = tx.send(Ok(TtagyStreamEvent::ThinkingDelta {
                                     session_id: session_id.clone(),
                                     text_delta: delta,
                                     elapsed_ms: elapsed,
@@ -89,7 +89,7 @@ impl FallbackDriver {
                             ParsedChunk::ContentDelta(delta) => {
                                 full_content.push_str(&delta);
                                 let elapsed = start_time.elapsed().as_secs_f64() * 1000.0;
-                                let _ = tx.send(Ok(AgyStreamEvent::ContentDelta {
+                                let _ = tx.send(Ok(TtagyStreamEvent::ContentDelta {
                                     session_id: session_id.clone(),
                                     text_delta: delta,
                                     accumulated_chars: full_content.chars().count(),
@@ -107,7 +107,7 @@ impl FallbackDriver {
                     Ok(Ok(None)) => {
                         // EOF
                         let elapsed = start_time.elapsed().as_secs_f64() * 1000.0;
-                        let _ = tx.send(Ok(AgyStreamEvent::Done {
+                        let _ = tx.send(Ok(TtagyStreamEvent::Done {
                             session_id: session_id.clone(),
                             full_content,
                             thinking_content: if thinking_content.is_empty() { None } else { Some(thinking_content) },

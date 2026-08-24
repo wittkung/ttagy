@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "AgyResponseContract",
+  "title": "TtagyResponseContract",
   "description": "Draft-07 strongly-typed unary response schema for Local AI Agent Daemon and SDK",
   "type": "object",
   "required": ["session_id", "status", "content", "elapsed_ms"],

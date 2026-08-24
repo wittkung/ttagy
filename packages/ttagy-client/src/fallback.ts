@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as readline from "node:readline";
-import type { AgyRequest, AgyStreamEvent } from "./types.ts";
+import type { TtagyRequest, TtagyStreamEvent } from "./types.ts";
 
 /**
  * 自动发现本地 agy 可执行文件路径
@@ -26,8 +26,8 @@ export function findAgyBinary(): string | null {
  * TypeScript 进程内 Fallback 流式推导器
  */
 export async function* streamChatFallback(
-  request: AgyRequest
-): AsyncGenerator<AgyStreamEvent, void, unknown> {
+  request: TtagyRequest
+): AsyncGenerator<TtagyStreamEvent, void, unknown> {
   const binary = findAgyBinary();
   if (!binary) {
     yield {

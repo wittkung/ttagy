@@ -1,5 +1,5 @@
 [package]
-name = "agy-core"
+name = "ttagy-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

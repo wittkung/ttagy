@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AgyClient } from "../index.ts";
+import { TtagyClient } from "../index.ts";
 
-test("AgyClient initializes with remote node configuration", () => {
-  const client = new AgyClient({
+test("TtagyClient initializes with remote node configuration", () => {
+  const client = new TtagyClient({
     baseUrl: "http://127.0.0.1:8970",
     authToken: "secret123",
     autoFallback: true,
@@ -11,8 +11,8 @@ test("AgyClient initializes with remote node configuration", () => {
   assert.ok(client);
 });
 
-test("AgyClient errors gracefully when remote node unreachable without fallback", async () => {
-  const client = new AgyClient({
+test("TtagyClient errors gracefully when remote node unreachable without fallback", async () => {
+  const client = new TtagyClient({
     baseUrl: "http://127.0.0.1:9999", // 不存在的端口
     authToken: "secret123",
     autoFallback: false,

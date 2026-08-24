@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "crates/agy-core",
-    "crates/agy-client",
-    "crates/agyd",
+    "crates/ttagy-core",
+    "crates/ttagy-client",
+    "crates/ttagyd",
 ]
 resolver = "2"
 
@@ -11,7 +11,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Antigravity Developer"]
 license = "BSD-3-Clause OR Apache-2.0"
-repository = "https://github.com/wittkung/agy-bridge"
+repository = "https://github.com/wittkung/ttagy"
 
 [profile.release]
 opt-level = "z"
