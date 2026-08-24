@@ -1,9 +1,9 @@
+//! TTAgy 核心库 - 强类型契约、沙箱隔离与解析管道 (Rust Pure Core)
+
 pub mod detector;
-pub mod parser;
 pub mod sandbox;
-pub mod types;
+pub mod v1;
 
 pub use detector::TtagyDetector;
-pub use parser::{NdjsonParser, ParsedChunk};
 pub use sandbox::SandboxGuard;
-pub use types::{TtagyRequest, TtagyResponse, TtagyStreamEvent};
+pub use v1::*;
