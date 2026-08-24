@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Dual-mode Rust Client SDK for AGY Bridge with automatic daemon/process fallback"
+description = "Dual-mode Rust Client SDK for AGY Bridge with automatic remote node / process fallback"
 
 [dependencies]
 agy-core = { path = "../agy-core" }
@@ -13,3 +13,4 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 futures-util = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }

@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import { streamChatFallback } from "./fallback.ts";
 import type { AgyRequest, AgyResponse, AgyStreamEvent } from "./types.ts";
 
@@ -6,17 +5,22 @@ export type * from "./types.ts";
 export * from "./fallback.ts";
 
 export interface ClientOptions {
-  socketPath?: string;
-  httpUrl?: string;
+  /** 远程私有节点地址，如 "http://100.64.0.1:8970" 或 "https://agent.yourdomain.com" */
+  baseUrl?: string;
+  /** 访问私有节点所需的安全 Bearer Token */
+  authToken?: string;
+  /** 当未配置远程节点或连接失败时，是否自动回退至本地沙箱直调 */
   autoFallback?: boolean;
 }
 
 export class AgyClient {
-  private socketPath: string;
+  private baseUrl?: string;
+  private authToken?: string;
   private autoFallback: boolean;
 
   constructor(options?: ClientOptions) {
-    this.socketPath = options?.socketPath || "/tmp/local_ai_daemon.sock";
+    this.baseUrl = options?.baseUrl?.replace(/\/+$/, "");
+    this.authToken = options?.authToken;
     this.autoFallback = options?.autoFallback ?? true;
   }
 
@@ -24,12 +28,74 @@ export class AgyClient {
    * 发起流式对话
    */
   async *streamChat(request: AgyRequest): AsyncGenerator<AgyStreamEvent, void, unknown> {
-    const isDaemonLive = fs.existsSync(this.socketPath);
+    // 1. 若配置了远程节点，优先通过 HTTP/SSE 请求远程 Agent 节点
+    if (this.baseUrl) {
+      try {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (this.authToken) {
+          headers["Authorization"] = `Bearer ${this.authToken}`;
+        }
 
-    if (isDaemonLive) {
-      // TODO: 连接 Daemon IPC 流
+        const res = await fetch(`${this.baseUrl}/api/v1/stream`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(request),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Remote node returned status ${res.status}: ${res.statusText}`);
+        }
+
+        if (!res.body) {
+          throw new Error("No response body received from remote agent node");
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data:")) {
+              const dataStr = trimmed.slice(5).trim();
+              if (dataStr) {
+                try {
+                  const ev = JSON.parse(dataStr) as AgyStreamEvent;
+                  yield ev;
+                } catch {
+                  // 忽略非 JSON 数据行
+                }
+              }
+            }
+          }
+        }
+        return;
+      } catch (err) {
+        if (!this.autoFallback) {
+          yield {
+            type: "agy:error",
+            sessionId: request.sessionId || "unknown",
+            errorCode: "REMOTE_NODE_FAILED",
+            errorMessage: err instanceof Error ? err.message : String(err),
+            isRetryable: false,
+          };
+          return;
+        }
+        // 自动降级至本地 Fallback
+      }
     }
 
+    // 2. 本地沙箱 Worker 兜底
     if (this.autoFallback) {
       yield* streamChatFallback(request);
       return;
@@ -38,14 +104,14 @@ export class AgyClient {
     yield {
       type: "agy:error",
       sessionId: request.sessionId || "unknown",
-      errorCode: "DAEMON_UNAVAILABLE",
-      errorMessage: "Local AI Daemon 未运行且未启用 autoFallback",
+      errorCode: "NO_BACKEND_AVAILABLE",
+      errorMessage: "未配置远程节点且未启用 autoFallback",
       isRetryable: false,
     };
   }
 
   /**
-   * 一次性获取完整响应
+   * 一次性获取完整推导响应
    */
   async chat(request: AgyRequest): Promise<AgyResponse> {
     const startTime = Date.now();

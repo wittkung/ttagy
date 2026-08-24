@@ -2,7 +2,6 @@
 
 use std::process::Stdio;
 use std::time::{Duration, Instant};
-use futures_util::Stream;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -18,7 +17,7 @@ pub struct FallbackDriver;
 impl FallbackDriver {
     pub async fn stream_chat(
         request: AgyRequest,
-    ) -> Result<impl Stream<Item = Result<AgyStreamEvent, String>>, String> {
+    ) -> Result<ReceiverStream<Result<AgyStreamEvent, String>>, String> {
         let binary = AgyDetector::find_binary().ok_or_else(|| {
             "未检测到 Antigravity CLI (agy) 二进制。请先在终端安装并认证。".to_string()
         })?;
