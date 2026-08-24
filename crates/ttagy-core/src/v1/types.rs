@@ -1,6 +1,22 @@
-//! 强类型 Local AI 数据模型与流式事件定义 (Draft-07 契约对齐)
-
 use serde::{Deserialize, Serialize};
+
+/// Antigravity CLI 官方支持的原生模型全量权威索引
+pub const AGY_SUPPORTED_MODELS: &[&str] = &[
+    "gemini-3.7-flash-high",
+    "gemini-3.7-flash-medium",
+    "gemini-3.7-flash-low",
+    "gemini-3.6-flash-high",
+    "gemini-3.6-flash-medium",
+    "gemini-3.6-flash-low",
+    "gemini-3.5-flash-high",
+    "gemini-3.5-flash-medium",
+    "gemini-3.5-flash-low",
+    "gemini-3.1-pro-high",
+    "gemini-3.1-pro-low",
+    "claude-sonnet-4-6",
+    "claude-opus-4-6-thinking",
+    "gpt-oss-120b-medium",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TtagyRequest {

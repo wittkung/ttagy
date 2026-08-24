@@ -7,6 +7,7 @@ pub enum ParsedChunk {
     ThinkingDelta(String),
     ContentDelta(String),
     Result(String),
+    Error(String),
     Ignored,
 }
 
@@ -31,10 +32,15 @@ impl NdjsonParser {
 
         if ev_name == "step_update" {
             if let Some(step) = val.get("step_update") {
-                if let Some(thought) = step.get("thought_delta").or_else(|| step.get("reasoning_delta")).and_then(|v| v.as_str()) {
+                if let Some(thought) = step.get("thought_delta")
+                    .or_else(|| step.get("reasoning_delta"))
+                    .or_else(|| step.get("thinking_delta"))
+                    .and_then(|v| v.as_str()) {
                     return ParsedChunk::ThinkingDelta(thought.to_string());
                 }
-                if let Some(delta) = step.get("text_delta").and_then(|v| v.as_str()) {
+                if let Some(delta) = step.get("text_delta")
+                    .or_else(|| step.get("content_delta"))
+                    .and_then(|v| v.as_str()) {
                     return ParsedChunk::ContentDelta(delta.to_string());
                 }
             }
@@ -44,7 +50,18 @@ impl NdjsonParser {
             }
         } else if ev_name == "result" {
             if let Some(res_obj) = val.get("result") {
-                let content = res_obj.get("content")
+                if let Some(err) = res_obj.get("error").and_then(|v| v.as_str()) {
+                    if !err.is_empty() {
+                        return ParsedChunk::Error(err.to_string());
+                    }
+                }
+                let status = res_obj.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                if status == "ERROR" {
+                    let err = res_obj.get("error").and_then(|v| v.as_str()).unwrap_or("AGY worker execution error");
+                    return ParsedChunk::Error(err.to_string());
+                }
+                let content = res_obj.get("response")
+                    .or_else(|| res_obj.get("content"))
                     .or_else(|| res_obj.get("text"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");

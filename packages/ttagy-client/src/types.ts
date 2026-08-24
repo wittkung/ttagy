@@ -1,6 +1,24 @@
 /**
- * Local AI 强类型契约定义 (Draft-07 对齐)
+ * Antigravity CLI 官方支持的原生模型全量权威索引 (2026 最新)
  */
+export const AGY_SUPPORTED_MODELS = [
+  "gemini-3.7-flash-high",
+  "gemini-3.7-flash-medium",
+  "gemini-3.7-flash-low",
+  "gemini-3.6-flash-high",
+  "gemini-3.6-flash-medium",
+  "gemini-3.6-flash-low",
+  "gemini-3.5-flash-high",
+  "gemini-3.5-flash-medium",
+  "gemini-3.5-flash-low",
+  "gemini-3.1-pro-high",
+  "gemini-3.1-pro-low",
+  "claude-sonnet-4-6",
+  "claude-opus-4-6-thinking",
+  "gpt-oss-120b-medium",
+] as const;
+
+export type AgySupportedModel = typeof AGY_SUPPORTED_MODELS[number];
 
 export interface TtagyRequest {
   sessionId?: string;
@@ -10,7 +28,9 @@ export interface TtagyRequest {
   temperature?: number;
   systemInstruction?: string;
   jsonSchema?: string;
+  schemaPath?: string;
   timeoutSecs?: number;
+  retries?: number;
 }
 
 export interface TtagyResponse {

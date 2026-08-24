@@ -149,4 +149,57 @@ export class TtagyClient {
       elapsedMs: Date.now() - startTime,
     };
   }
+
+  /**
+   * 强类型 JSON 确定性推导执行器 (带自动代码块剥离与重试)
+   */
+  async runJson<T = any>(request: TtagyRequest): Promise<T> {
+    const retries = request.retries ?? 2;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= retries + 1; attempt++) {
+      try {
+        const response = await this.chat({
+          ...request,
+          sessionId: `json_${Date.now()}_att${attempt}`,
+        });
+
+        if (response.status === "error") {
+          throw new Error(response.errorMessage || "Ttagy returned error status");
+        }
+
+        let raw = response.content.trim();
+
+        // 1. 尝试直接解析
+        try {
+          return JSON.parse(raw) as T;
+        } catch {}
+
+        // 2. 剥离 Markdown 代码块 ```json ... ```
+        const markdownMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (markdownMatch && markdownMatch[1]) {
+          try {
+            return JSON.parse(markdownMatch[1].trim()) as T;
+          } catch {}
+        }
+
+        // 3. 提取首尾大括号
+        const firstBrace = raw.indexOf("{");
+        const lastBrace = raw.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+          const candidate = raw.slice(firstBrace, lastBrace + 1);
+          return JSON.parse(candidate) as T;
+        }
+
+        throw new Error(`无法从 ttagy 输出中提取合法 JSON (长度: ${raw.length})`);
+      } catch (err: any) {
+        lastError = err;
+        if (attempt <= retries) {
+          await new Promise((r) => setTimeout(r, 1000 * attempt));
+        }
+      }
+    }
+
+    throw lastError || new Error("ttagy runJson failed after retries");
+  }
 }

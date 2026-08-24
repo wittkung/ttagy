@@ -101,6 +101,16 @@ impl FallbackDriver {
                                     full_content = res;
                                 }
                             }
+                            ParsedChunk::Error(err) => {
+                                let _ = tx.send(Ok(TtagyStreamEvent::Error {
+                                    session_id: session_id.clone(),
+                                    error_code: "WORKER_ERROR".to_string(),
+                                    error_message: err,
+                                    is_retryable: true,
+                                })).await;
+                                let _ = child.kill().await;
+                                break;
+                            }
                             ParsedChunk::Ignored => {}
                         }
                     }

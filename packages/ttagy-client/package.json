@@ -3,9 +3,16 @@
   "version": "0.1.0",
   "description": "High-performance TypeScript/JavaScript client SDK for AGY Bridge",
   "type": "module",
-  "main": "src/index.ts",
-  "module": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
   "scripts": {
     "test": "node --experimental-strip-types --test src/__tests__/*.test.mjs"
   },

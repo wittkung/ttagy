@@ -46,6 +46,27 @@ async fn health_handler() -> impl IntoResponse {
     }))
 }
 
+fn normalize_model_name(input: &str) -> String {
+    let s = input.trim().to_lowercase();
+    if s.is_empty() || s.contains("3.7") || s.contains("default") {
+        "gemini-3.7-flash".to_string()
+    } else if s.contains("3.6") {
+        "gemini-3.6-flash".to_string()
+    } else if s.contains("3.5") || s.contains("2.5") {
+        "gemini-3.5-flash".to_string()
+    } else if s.contains("3.1") || s.contains("pro") {
+        "gemini-3.1-pro".to_string()
+    } else if s.contains("sonnet") || s.contains("claude-4") {
+        "claude-sonnet-4.6".to_string()
+    } else if s.contains("opus") {
+        "claude-opus-4.6".to_string()
+    } else if s.contains("gpt") || s.contains("oss") {
+        "gpt-oss-120b".to_string()
+    } else {
+        "gemini-3.7-flash".to_string()
+    }
+}
+
 async fn stream_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<TtagyRequest>,
@@ -61,9 +82,10 @@ async fn stream_handler(
 
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(128);
     let session_id = payload.session_id.clone();
-    let model = payload.model.clone().unwrap_or_else(|| "gemini-3.7-flash".into());
-    let effort = payload.effort.clone().unwrap_or_else(|| "high".into());
-    let timeout_secs = payload.timeout_secs;
+    let raw_model = payload.model.clone().unwrap_or_else(|| "gemini-3.7-flash".into());
+    let model = normalize_model_name(&raw_model);
+    let effort = payload.effort.clone().unwrap_or_else(|| "low".into());
+    let timeout_secs = payload.timeout_secs.max(15);
 
     tokio::spawn(async move {
         let _permit = permit;
@@ -104,7 +126,7 @@ async fn stream_handler(
             .arg("--model")
             .arg(&model);
 
-        if !effort.is_empty() && effort != "none" && (model.contains("3.7") || model.contains("pro")) {
+        if !effort.is_empty() && effort != "none" {
             cmd.arg("--effort").arg(&effort);
         }
 
@@ -189,6 +211,19 @@ async fn stream_handler(
                                 let _ = child.kill().await;
                                 break;
                             }
+                            ParsedChunk::Error(err_msg) => {
+                                let ev = TtagyStreamEvent::Error {
+                                    session_id: session_id.clone(),
+                                    error_code: "AGY_ERROR".into(),
+                                    error_message: err_msg,
+                                    is_retryable: false,
+                                };
+                                if let Ok(json_str) = serde_json::to_string(&ev) {
+                                    let _ = tx.send(Ok(Event::default().data(json_str))).await;
+                                }
+                                let _ = child.kill().await;
+                                break;
+                            }
                             ParsedChunk::Ignored => {}
                         }
                     }
@@ -221,11 +256,12 @@ async fn stream_handler(
                         break;
                     }
                     Err(_) => {
+                        // Timeout
                         let _ = child.kill().await;
                         let err_event = TtagyStreamEvent::Error {
                             session_id: session_id.clone(),
-                            error_code: "INACTIVITY_TIMEOUT".into(),
-                            error_message: format!("Worker silent for more than {}s (Inactivity Timeout)", timeout_secs),
+                            error_code: "TIMEOUT".into(),
+                            error_message: format!("Request timed out after {} seconds", timeout_secs),
                             is_retryable: true,
                         };
                         if let Ok(json_str) = serde_json::to_string(&err_event) {
