@@ -141,13 +141,22 @@ class TtagyClient {
         final args = [
           '-p', request.prompt,
           '--output-format', 'stream-json',
-          '--disable-slash-commands',
-          '--dangerously-skip-permissions',
           '--log-file', logPath,
         ];
         if (request.model != null) args.addAll(['--model', request.model!]);
         if (request.effort != null && request.effort != 'none') args.addAll(['--effort', request.effort!]);
+        if (request.agent != null) args.addAll(['--agent', request.agent!]);
+        if (request.mode != null) args.addAll(['--mode', request.mode!]);
+        if (request.conversationId != null) args.addAll(['--conversation', request.conversationId!]);
+        if (request.continueLast == true) args.add('--continue');
+        if (request.project != null) args.addAll(['--project', request.project!]);
+        for (final dir in request.addDirs) {
+          args.addAll(['--add-dir', dir]);
+        }
+        if (request.sandbox == true) args.add('--sandbox');
         if (request.jsonSchema != null) args.addAll(['--json-schema', request.jsonSchema!]);
+        if (request.disableSlashCommands ?? true) args.add('--disable-slash-commands');
+        if (request.dangerouslySkipPermissions ?? true) args.add('--dangerously-skip-permissions');
 
         try {
           process = await Process.start(binary, args, workingDirectory: sandboxDir!.path);

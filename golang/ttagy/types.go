@@ -1,15 +1,24 @@
 package ttagy
 
-// Request 请求契约模型 (对齐 JSON Schema v1)
+// Request 请求契约模型 (对齐 JSON Schema v1 & Superset)
 type Request struct {
-	SessionID         string  `json:"session_id,omitempty"`
-	Prompt            string  `json:"prompt"`
-	Model             string  `json:"model,omitempty"`
-	Effort            string  `json:"effort,omitempty"`
-	Temperature       float64 `json:"temperature,omitempty"`
-	SystemInstruction string  `json:"system_instruction,omitempty"`
-	JSONSchema        string  `json:"json_schema,omitempty"`
-	TimeoutSecs       int     `json:"timeout_secs,omitempty"`
+	SessionID                  string   `json:"session_id,omitempty"`
+	Prompt                     string   `json:"prompt"`
+	Model                      string   `json:"model,omitempty"`
+	Effort                     string   `json:"effort,omitempty"`
+	Temperature                float64  `json:"temperature,omitempty"`
+	SystemInstruction          string   `json:"system_instruction,omitempty"`
+	JSONSchema                 string   `json:"json_schema,omitempty"`
+	Agent                      string   `json:"agent,omitempty"`
+	Mode                       string   `json:"mode,omitempty"`
+	ConversationID             string   `json:"conversation_id,omitempty"`
+	ContinueLast               bool     `json:"continue_last,omitempty"`
+	Project                    string   `json:"project,omitempty"`
+	AddDirs                    []string `json:"add_dirs,omitempty"`
+	Sandbox                    bool     `json:"sandbox,omitempty"`
+	DangerouslySkipPermissions bool     `json:"dangerously_skip_permissions,omitempty"`
+	DisableSlashCommands       bool     `json:"disable_slash_commands,omitempty"`
+	TimeoutSecs                int      `json:"timeout_secs,omitempty"`
 }
 
 // Response 响应聚合模型

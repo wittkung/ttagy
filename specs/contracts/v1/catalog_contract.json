@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TtagyCatalogContract",
+  "description": "Draft-07 schema for Dynamic Model Matrix and Agent Catalog",
+  "definitions": {
+    "ModelCapability": {
+      "type": "object",
+      "required": ["id", "name", "context_window", "supported_efforts", "supports_tool_calling"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "provider": { "type": "string" },
+        "context_window": { "type": "integer" },
+        "max_output_tokens": { "type": "integer" },
+        "supported_efforts": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["none", "low", "medium", "high"] }
+        },
+        "supports_streaming": { "type": "boolean", "default": true },
+        "supports_tool_calling": { "type": "boolean", "default": false },
+        "supports_vision": { "type": "boolean", "default": false },
+        "supports_json_schema": { "type": "boolean", "default": true }
+      },
+      "additionalProperties": false
+    },
+    "AgentDefinition": {
+      "type": "object",
+      "required": ["id", "name", "default_model"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "system_prompt": { "type": "string" },
+        "default_model": { "type": "string" },
+        "default_effort": { "type": "string", "default": "low" },
+        "enabled_tools": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "mcp_servers": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "models": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/ModelCapability" }
+    },
+    "agents": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/AgentDefinition" }
+    }
+  }
+}

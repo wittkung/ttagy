@@ -33,6 +33,24 @@ pub struct TtagyRequest {
     pub system_instruction: Option<String>,
     #[serde(default, alias = "jsonSchema", alias = "schemaPath")]
     pub json_schema: Option<String>,
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default, alias = "conversationId")]
+    pub conversation_id: Option<String>,
+    #[serde(default, alias = "continueLast")]
+    pub continue_last: Option<bool>,
+    #[serde(default)]
+    pub project: Option<String>,
+    #[serde(default, alias = "addDirs")]
+    pub add_dirs: Vec<String>,
+    #[serde(default)]
+    pub sandbox: Option<bool>,
+    #[serde(default, alias = "dangerouslySkipPermissions")]
+    pub dangerously_skip_permissions: Option<bool>,
+    #[serde(default, alias = "disableSlashCommands")]
+    pub disable_slash_commands: Option<bool>,
     #[serde(default = "default_timeout_secs", alias = "timeoutSecs")]
     pub timeout_secs: u64,
 }
@@ -47,8 +65,119 @@ impl Default for TtagyRequest {
             temperature: None,
             system_instruction: None,
             json_schema: None,
+            agent: None,
+            mode: None,
+            conversation_id: None,
+            continue_last: None,
+            project: None,
+            add_dirs: Vec::new(),
+            sandbox: None,
+            dangerously_skip_permissions: None,
+            disable_slash_commands: None,
             timeout_secs: default_timeout_secs(),
         }
+    }
+}
+
+impl TtagyRequest {
+    pub fn builder(prompt: impl Into<String>) -> TtagyRequestBuilder {
+        TtagyRequestBuilder::new(prompt)
+    }
+}
+
+pub struct TtagyRequestBuilder {
+    req: TtagyRequest,
+}
+
+impl TtagyRequestBuilder {
+    pub fn new(prompt: impl Into<String>) -> Self {
+        let mut req = TtagyRequest::default();
+        req.prompt = prompt.into();
+        Self { req }
+    }
+
+    pub fn session_id(mut self, sid: impl Into<String>) -> Self {
+        self.req.session_id = sid.into();
+        self
+    }
+
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.req.model = Some(model.into());
+        self
+    }
+
+    pub fn effort(mut self, effort: impl Into<String>) -> Self {
+        self.req.effort = Some(effort.into());
+        self
+    }
+
+    pub fn temperature(mut self, temp: f32) -> Self {
+        self.req.temperature = Some(temp);
+        self
+    }
+
+    pub fn system_instruction(mut self, instruction: impl Into<String>) -> Self {
+        self.req.system_instruction = Some(instruction.into());
+        self
+    }
+
+    pub fn json_schema(mut self, schema: impl Into<String>) -> Self {
+        self.req.json_schema = Some(schema.into());
+        self
+    }
+
+    pub fn agent(mut self, agent: impl Into<String>) -> Self {
+        self.req.agent = Some(agent.into());
+        self
+    }
+
+    pub fn mode(mut self, mode: impl Into<String>) -> Self {
+        self.req.mode = Some(mode.into());
+        self
+    }
+
+    pub fn conversation_id(mut self, cid: impl Into<String>) -> Self {
+        self.req.conversation_id = Some(cid.into());
+        self
+    }
+
+    pub fn continue_last(mut self, c: bool) -> Self {
+        self.req.continue_last = Some(c);
+        self
+    }
+
+    pub fn project(mut self, proj: impl Into<String>) -> Self {
+        self.req.project = Some(proj.into());
+        self
+    }
+
+    pub fn add_dir(mut self, dir: impl Into<String>) -> Self {
+        self.req.add_dirs.push(dir.into());
+        self
+    }
+
+    pub fn sandbox(mut self, s: bool) -> Self {
+        self.req.sandbox = Some(s);
+        self
+    }
+
+    pub fn dangerously_skip_permissions(mut self, d: bool) -> Self {
+        self.req.dangerously_skip_permissions = Some(d);
+        self
+    }
+
+    pub fn disable_slash_commands(mut self, d: bool) -> Self {
+        self.req.disable_slash_commands = Some(d);
+        self
+    }
+
+    pub fn timeout_secs(mut self, t: u64) -> Self {
+        self.req.timeout_secs = t;
+        self
+    }
+
+    pub fn build(self) -> TtagyRequest {
+        self.req
     }
 }
 

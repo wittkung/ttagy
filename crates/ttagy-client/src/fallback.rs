@@ -47,6 +47,44 @@ impl FallbackDriver {
             cmd.arg("--effort").arg(&effort);
         }
 
+        if let Some(ref agent) = request.agent {
+            if !agent.is_empty() {
+                cmd.arg("--agent").arg(agent);
+            }
+        }
+
+        if let Some(ref mode) = request.mode {
+            if !mode.is_empty() {
+                cmd.arg("--mode").arg(mode);
+            }
+        }
+
+        if let Some(ref conv) = request.conversation_id {
+            if !conv.is_empty() {
+                cmd.arg("--conversation").arg(conv);
+            }
+        }
+
+        if request.continue_last == Some(true) {
+            cmd.arg("--continue");
+        }
+
+        if let Some(ref proj) = request.project {
+            if !proj.is_empty() {
+                cmd.arg("--project").arg(proj);
+            }
+        }
+
+        for dir in &request.add_dirs {
+            if !dir.is_empty() {
+                cmd.arg("--add-dir").arg(dir);
+            }
+        }
+
+        if request.sandbox == Some(true) {
+            cmd.arg("--sandbox");
+        }
+
         if let Some(ref schema) = request.json_schema {
             if !schema.is_empty() {
                 cmd.arg("--json-schema").arg(schema);
@@ -55,11 +93,18 @@ impl FallbackDriver {
 
         cmd.arg("--output-format")
             .arg("stream-json")
-            .arg("--disable-slash-commands")
-            .arg("--dangerously-skip-permissions")
             .arg("--log-file")
-            .arg(&sandbox.log_path)
-            .stdout(Stdio::piped())
+            .arg(&sandbox.log_path);
+
+        if request.disable_slash_commands.unwrap_or(true) {
+            cmd.arg("--disable-slash-commands");
+        }
+
+        if request.dangerously_skip_permissions.unwrap_or(true) {
+            cmd.arg("--dangerously-skip-permissions");
+        }
+
+        cmd.stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
         let mut child = cmd.spawn().map_err(|e| format!("启动 agy 进程失败: {}", e))?;

@@ -1,5 +1,5 @@
 """
-TTAgy Python SDK 强类型契约模型
+TTAgy Python SDK 强类型契约模型 (Superset Expanded)
 """
 from dataclasses import dataclass, field
 from typing import Optional, Any, Dict, List, Literal
@@ -31,6 +31,15 @@ class TtagyRequest:
     system_instruction: Optional[str] = None
     json_schema: Optional[str] = None
     schema_path: Optional[str] = None
+    agent: Optional[str] = None
+    mode: Optional[str] = None
+    conversation_id: Optional[str] = None
+    continue_last: Optional[bool] = None
+    project: Optional[str] = None
+    add_dirs: List[str] = field(default_factory=list)
+    sandbox: Optional[bool] = None
+    dangerously_skip_permissions: Optional[bool] = None
+    disable_slash_commands: Optional[bool] = None
     timeout_secs: int = 60
     retries: int = 2
 
@@ -48,6 +57,24 @@ class TtagyRequest:
             data["system_instruction"] = self.system_instruction
         if self.json_schema:
             data["json_schema"] = self.json_schema
+        if self.agent:
+            data["agent"] = self.agent
+        if self.mode:
+            data["mode"] = self.mode
+        if self.conversation_id:
+            data["conversation_id"] = self.conversation_id
+        if self.continue_last is not None:
+            data["continue_last"] = self.continue_last
+        if self.project:
+            data["project"] = self.project
+        if self.add_dirs:
+            data["add_dirs"] = self.add_dirs
+        if self.sandbox is not None:
+            data["sandbox"] = self.sandbox
+        if self.dangerously_skip_permissions is not None:
+            data["dangerously_skip_permissions"] = self.dangerously_skip_permissions
+        if self.disable_slash_commands is not None:
+            data["disable_slash_commands"] = self.disable_slash_commands
         return {k: v for k, v in data.items() if v is not None}
 
 @dataclass

@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TtagyMcpManagementContract",
+  "description": "Draft-07 schema for dynamic MCP Server registration, status query, and tool calls",
+  "definitions": {
+    "McpTransportType": {
+      "type": "string",
+      "enum": ["stdio", "sse", "streamable_http"]
+    },
+    "McpServerStatus": {
+      "type": "string",
+      "enum": ["connecting", "connected", "degraded", "stopped", "error"]
+    },
+    "McpServerConfig": {
+      "type": "object",
+      "required": ["name", "transport"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-zA-Z0-9_-]+$" },
+        "transport": { "$ref": "#/definitions/McpTransportType" },
+        "command": { "type": "string" },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "url": { "type": "string", "format": "uri" },
+        "auto_restart": { "type": "boolean", "default": true }
+      },
+      "additionalProperties": false
+    },
+    "McpToolDefinition": {
+      "type": "object",
+      "required": ["server_name", "name", "description", "input_schema"],
+      "properties": {
+        "server_name": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "input_schema": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "McpToolCallRequest": {
+      "type": "object",
+      "required": ["server_name", "tool_name", "arguments"],
+      "properties": {
+        "server_name": { "type": "string" },
+        "tool_name": { "type": "string" },
+        "arguments": { "type": "object" },
+        "timeout_ms": { "type": "integer", "default": 30000 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "servers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["config", "status", "tools_count"],
+        "properties": {
+          "config": { "$ref": "#/definitions/McpServerConfig" },
+          "status": { "$ref": "#/definitions/McpServerStatus" },
+          "tools_count": { "type": "integer" },
+          "last_error": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

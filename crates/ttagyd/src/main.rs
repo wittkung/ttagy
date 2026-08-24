@@ -2,6 +2,9 @@
 //!
 //! 支持 Unix Domain Socket (/tmp/ttagy.sock) 极速本地 IPC 与 TCP HTTP/SSE 远程双模并发监听。
 
+pub mod mcp_manager;
+pub mod session_store;
+pub mod worker_pool;
 mod v1;
 
 use axum::{
@@ -12,6 +15,8 @@ use axum::{
     response::Response,
     Router,
 };
+use mcp_manager::McpManager;
+use session_store::SessionStore;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -103,15 +108,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.host, config.port, config.max_concurrency
     );
 
+    let storage_dir = std::env::var("TTAGY_STORAGE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let mut p = std::env::temp_dir();
+            p.push("ttagy_storage");
+            p
+        });
+
+    let session_store = Arc::new(SessionStore::new(storage_dir));
+    let mcp_manager = Arc::new(McpManager::new());
+
     let state = Arc::new(AppState {
         auth_token: config.token.clone(),
         max_concurrency: config.max_concurrency,
         semaphore: Arc::new(Semaphore::new(config.max_concurrency)),
+        session_store,
+        mcp_manager,
     });
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
         .allow_headers(Any);
 
     let auth_state = state.clone();

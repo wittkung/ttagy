@@ -354,8 +354,6 @@ func (c *Client) streamFallback(ctx context.Context, req Request, out chan<- Str
 	args := []string{
 		"-p", req.Prompt,
 		"--output-format", "stream-json",
-		"--disable-slash-commands",
-		"--dangerously-skip-permissions",
 		"--log-file", filepath.Join(sandboxDir, "agy.log"),
 	}
 	if req.Model != "" {
@@ -364,8 +362,41 @@ func (c *Client) streamFallback(ctx context.Context, req Request, out chan<- Str
 	if req.Effort != "" && req.Effort != "none" {
 		args = append(args, "--effort", req.Effort)
 	}
+	if req.Agent != "" {
+		args = append(args, "--agent", req.Agent)
+	}
+	if req.Mode != "" {
+		args = append(args, "--mode", req.Mode)
+	}
+	if req.ConversationID != "" {
+		args = append(args, "--conversation", req.ConversationID)
+	}
+	if req.ContinueLast {
+		args = append(args, "--continue")
+	}
+	if req.Project != "" {
+		args = append(args, "--project", req.Project)
+	}
+	for _, dir := range req.AddDirs {
+		if dir != "" {
+			args = append(args, "--add-dir", dir)
+		}
+	}
+	if req.Sandbox {
+		args = append(args, "--sandbox")
+	}
 	if req.JSONSchema != "" {
 		args = append(args, "--json-schema", req.JSONSchema)
+	}
+	if req.DisableSlashCommands {
+		args = append(args, "--disable-slash-commands")
+	} else {
+		args = append(args, "--disable-slash-commands")
+	}
+	if req.DangerouslySkipPermissions {
+		args = append(args, "--dangerously-skip-permissions")
+	} else {
+		args = append(args, "--dangerously-skip-permissions")
 	}
 
 	cmd := buildGuardedCommand(ctx, binary, args, sandboxDir)

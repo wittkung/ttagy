@@ -8,6 +8,15 @@ class TtagyRequest {
   final double? temperature;
   final String? systemInstruction;
   final String? jsonSchema;
+  final String? agent;
+  final String? mode;
+  final String? conversationId;
+  final bool? continueLast;
+  final String? project;
+  final List<String> addDirs;
+  final bool? sandbox;
+  final bool? dangerouslySkipPermissions;
+  final bool? disableSlashCommands;
   final int timeoutSecs;
 
   const TtagyRequest({
@@ -18,6 +27,15 @@ class TtagyRequest {
     this.temperature,
     this.systemInstruction,
     this.jsonSchema,
+    this.agent,
+    this.mode,
+    this.conversationId,
+    this.continueLast,
+    this.project,
+    this.addDirs = const [],
+    this.sandbox,
+    this.dangerouslySkipPermissions,
+    this.disableSlashCommands,
     this.timeoutSecs = 60,
   });
 
@@ -29,6 +47,15 @@ class TtagyRequest {
         if (temperature != null) 'temperature': temperature,
         if (systemInstruction != null) 'system_instruction': systemInstruction,
         if (jsonSchema != null) 'json_schema': jsonSchema,
+        if (agent != null) 'agent': agent,
+        if (mode != null) 'mode': mode,
+        if (conversationId != null) 'conversation_id': conversationId,
+        if (continueLast != null) 'continue_last': continueLast,
+        if (project != null) 'project': project,
+        if (addDirs.isNotEmpty) 'add_dirs': addDirs,
+        if (sandbox != null) 'sandbox': sandbox,
+        if (dangerouslySkipPermissions != null) 'dangerously_skip_permissions': dangerouslySkipPermissions,
+        if (disableSlashCommands != null) 'disable_slash_commands': disableSlashCommands,
         'timeout_secs': timeoutSecs,
       };
 }

@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TtagyStatefulSessionContract",
+  "description": "Draft-07 strongly typed schema for Stateful Multi-turn Agent Sessions, History, and Compaction",
+  "definitions": {
+    "MessageRole": {
+      "type": "string",
+      "enum": ["system", "user", "assistant", "tool"]
+    },
+    "ToolCallItem": {
+      "type": "object",
+      "required": ["id", "name", "arguments"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "arguments": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "ToolResultItem": {
+      "type": "object",
+      "required": ["call_id", "content"],
+      "properties": {
+        "call_id": { "type": "string" },
+        "name": { "type": "string" },
+        "content": { "type": "string" },
+        "is_error": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": false
+    },
+    "SessionMessage": {
+      "type": "object",
+      "required": ["id", "role", "created_at"],
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "$ref": "#/definitions/MessageRole" },
+        "content": { "type": "string" },
+        "thinking_content": { "type": ["string", "null"] },
+        "tool_calls": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ToolCallItem" }
+        },
+        "tool_results": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ToolResultItem" }
+        },
+        "created_at": { "type": "integer", "minimum": 0 },
+        "pinned": { "type": "boolean", "default": false },
+        "token_count": { "type": ["integer", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "SessionMetadata": {
+      "type": "object",
+      "required": ["session_id", "status", "created_at", "last_accessed_at", "total_tokens"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "title": { "type": "string" },
+        "model": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["initialized", "active", "idle", "compacting", "expired", "archived"]
+        },
+        "ttl_secs": { "type": "integer", "default": 86400 },
+        "created_at": { "type": "integer" },
+        "last_accessed_at": { "type": "integer" },
+        "turn_count": { "type": "integer", "minimum": 0 },
+        "total_tokens": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": ["metadata", "messages"],
+  "properties": {
+    "metadata": { "$ref": "#/definitions/SessionMetadata" },
+    "messages": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/SessionMessage" }
+    }
+  },
+  "additionalProperties": false
+}

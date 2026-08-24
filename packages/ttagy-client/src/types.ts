@@ -29,6 +29,15 @@ export interface TtagyRequest {
   systemInstruction?: string;
   jsonSchema?: string;
   schemaPath?: string;
+  agent?: string;
+  mode?: "plan" | "accept-edits" | string;
+  conversationId?: string;
+  continueLast?: boolean;
+  project?: string;
+  addDirs?: string[];
+  sandbox?: boolean;
+  dangerouslySkipPermissions?: boolean;
+  disableSlashCommands?: boolean;
   timeoutSecs?: number;
   retries?: number;
   /** 可选的 AbortSignal 用于即时取消推理与销毁子进程 */
