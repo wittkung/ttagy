@@ -31,6 +31,8 @@ export interface TtagyRequest {
   schemaPath?: string;
   timeoutSecs?: number;
   retries?: number;
+  /** 可选的 AbortSignal 用于即时取消推理与销毁子进程 */
+  signal?: AbortSignal;
 }
 
 export interface TtagyResponse {
@@ -51,7 +53,7 @@ export type TtagyStreamEvent =
       sessionId: string;
       model: string;
       effort: string;
-      backendMode: "daemon_ipc" | "fallback_direct_spawn";
+      backendMode: "daemon_uds" | "daemon_tcp" | "daemon_ipc" | "fallback_direct_spawn";
     }
   | {
       type: "agy:thinking_delta";

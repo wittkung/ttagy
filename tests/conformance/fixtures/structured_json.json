@@ -1,0 +1,19 @@
+{
+  "name": "structured_json",
+  "scenario": "structured_json",
+  "request": {
+    "prompt": "scenario:structured_json",
+    "model": "gemini-3.7-flash",
+    "effort": "low"
+  },
+  "expected_event_types": [
+    "agy:init",
+    "agy:thinking_delta",
+    "agy:done"
+  ],
+  "expected_json": {
+    "status": "success",
+    "task": "compression",
+    "files_count": 3
+  }
+}

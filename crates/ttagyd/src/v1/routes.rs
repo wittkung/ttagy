@@ -10,21 +10,51 @@ use axum::{
 };
 use futures_util::Stream;
 use std::convert::Infallible;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::sync::CancellationToken;
 use ttagy_core::{
-    v1::{NdjsonParser, ParsedChunk, TtagyRequest, TtagyStreamEvent},
-    SandboxGuard, TtagyDetector,
+    resolve_model_name,
+    v1::{NdjsonParser, ParsedStreamItem, TtagyRequest, TtagyStreamEvent},
+    SandboxGuard, StderrDrainer, TtagyDetector,
 };
 
 pub struct AppState {
     pub auth_token: Option<String>,
     pub max_concurrency: usize,
     pub semaphore: Arc<tokio::sync::Semaphore>,
+}
+
+/// 带有 Stream Drop 感知的流包装器 (客户端连接断开时立即触发 Cancel)
+pub struct GuardedStream<S> {
+    inner: S,
+    cancel_token: CancellationToken,
+}
+
+impl<S> GuardedStream<S> {
+    pub fn new(inner: S, cancel_token: CancellationToken) -> Self {
+        Self { inner, cancel_token }
+    }
+}
+
+impl<S: Stream + Unpin> Stream for GuardedStream<S> {
+    type Item = S::Item;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.inner).poll_next(cx)
+    }
+}
+
+impl<S> Drop for GuardedStream<S> {
+    fn drop(&mut self) {
+        self.cancel_token.cancel();
+    }
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -34,37 +64,19 @@ pub fn router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-async fn health_handler() -> impl IntoResponse {
+async fn health_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let available = TtagyDetector::is_available().await;
     let binary = TtagyDetector::find_binary().map(|p| p.to_string_lossy().to_string());
+    let available_permits = state.semaphore.available_permits();
     Json(serde_json::json!({
         "status": if available { "ok" } else { "unavailable" },
         "version": "v1",
         "service": "ttagyd",
         "agy_binary": binary,
-        "available": available
+        "available": available,
+        "max_concurrency": state.max_concurrency,
+        "available_permits": available_permits
     }))
-}
-
-fn normalize_model_name(input: &str) -> String {
-    let s = input.trim().to_lowercase();
-    if s.is_empty() || s.contains("3.7") || s.contains("default") {
-        "gemini-3.7-flash".to_string()
-    } else if s.contains("3.6") {
-        "gemini-3.6-flash".to_string()
-    } else if s.contains("3.5") || s.contains("2.5") {
-        "gemini-3.5-flash".to_string()
-    } else if s.contains("3.1") || s.contains("pro") {
-        "gemini-3.1-pro".to_string()
-    } else if s.contains("sonnet") || s.contains("claude-4") {
-        "claude-sonnet-4.6".to_string()
-    } else if s.contains("opus") {
-        "claude-opus-4.6".to_string()
-    } else if s.contains("gpt") || s.contains("oss") {
-        "gpt-oss-120b".to_string()
-    } else {
-        "gemini-3.7-flash".to_string()
-    }
 }
 
 async fn stream_handler(
@@ -81,13 +93,19 @@ async fn stream_handler(
         .ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, "Antigravity CLI (agy) not found on host".into()))?;
 
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(128);
+    let cancel_token = CancellationToken::new();
+    let worker_cancel_token = cancel_token.clone();
+
     let session_id = payload.session_id.clone();
-    let raw_model = payload.model.clone().unwrap_or_else(|| "gemini-3.7-flash".into());
-    let model = normalize_model_name(&raw_model);
+    let model = match resolve_model_name(payload.model.as_deref()) {
+        Ok(m) => m,
+        Err(err) => return Err((StatusCode::BAD_REQUEST, err.into())),
+    };
     let effort = payload.effort.clone().unwrap_or_else(|| "low".into());
     let timeout_secs = payload.timeout_secs.max(15);
 
     tokio::spawn(async move {
+        // _permit 与 sandbox 生命周期在当前任务闭包内
         let _permit = permit;
         let start_time = std::time::Instant::now();
 
@@ -96,10 +114,12 @@ async fn stream_handler(
             session_id: session_id.clone(),
             model: model.clone(),
             effort: effort.clone(),
-            backend_mode: "remote_daemon_v1".into(),
+            backend_mode: "daemon_tcp".into(),
         };
         if let Ok(json_str) = serde_json::to_string(&init_event) {
-            let _ = tx.send(Ok(Event::default().data(json_str))).await;
+            if tx.send(Ok(Event::default().data(json_str))).await.is_err() {
+                return; // 客户端已立即断开
+            }
         }
 
         // 2. 在独立隔离沙箱运行 agy
@@ -124,10 +144,20 @@ async fn stream_handler(
             .arg("-p")
             .arg(&payload.prompt)
             .arg("--model")
-            .arg(&model);
+            .arg(&model)
+            .kill_on_drop(true);
+
+        #[cfg(unix)]
+        cmd.process_group(0);
 
         if !effort.is_empty() && effort != "none" {
             cmd.arg("--effort").arg(&effort);
+        }
+
+        if let Some(ref schema) = payload.json_schema {
+            if !schema.is_empty() {
+                cmd.arg("--json-schema").arg(schema);
+            }
         }
 
         cmd.arg("--output-format")
@@ -155,52 +185,137 @@ async fn stream_handler(
             }
         };
 
-        let stdout = child.stdout.take();
-        if let Some(out) = stdout {
-            let mut reader = BufReader::new(out).lines();
-            let timeout_duration = Duration::from_secs(timeout_secs);
-            let mut accumulated_text = String::new();
-            let mut accumulated_thinking = String::new();
+        let stdout = match child.stdout.take() {
+            Some(o) => o,
+            None => {
+                let _ = child.kill().await;
+                return;
+            }
+        };
 
-            loop {
-                let next_line_future = reader.next_line();
-                tokio::pin!(next_line_future);
+        // 启动 Stderr 异步非阻塞排空器 (64KB 环形缓冲，彻底杜绝 Pipe 死锁)
+        let stderr_drainer = child.stderr.take().map(|err| StderrDrainer::spawn(err, 64 * 1024));
 
-                match tokio::time::timeout(timeout_duration, &mut next_line_future).await {
-                    Ok(Ok(Some(line))) => {
-                        let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
-                        match NdjsonParser::parse_line(&line) {
-                            ParsedChunk::ThinkingDelta(delta) => {
-                                accumulated_thinking.push_str(&delta);
-                                let ev = TtagyStreamEvent::ThinkingDelta {
+        let mut reader = BufReader::new(stdout).lines();
+        let timeout_duration = Duration::from_secs(timeout_secs);
+        let mut accumulated_text = String::new();
+        let mut accumulated_thinking = String::new();
+
+        loop {
+            tokio::select! {
+                biased;
+
+                // 客户端主动断开 / Abort 取消触发
+                _ = worker_cancel_token.cancelled() => {
+                    let _ = child.kill().await;
+                    break;
+                }
+
+                // 下游 Channel Receiver 被 Drop
+                _ = tx.closed() => {
+                    let _ = child.kill().await;
+                    break;
+                }
+
+                // 行读取事件与超时控制
+                line_res = tokio::time::timeout(timeout_duration, reader.next_line()) => {
+                    match line_res {
+                        Ok(Ok(Some(line))) => {
+                            let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+                            let items = NdjsonParser::parse_line_items(&line);
+
+                            for item in items {
+                                match item {
+                                    ParsedStreamItem::ThinkingDelta(delta) => {
+                                        accumulated_thinking.push_str(&delta);
+                                        let ev = TtagyStreamEvent::ThinkingDelta {
+                                            session_id: session_id.clone(),
+                                            text_delta: delta,
+                                            elapsed_ms,
+                                        };
+                                        if let Ok(json_str) = serde_json::to_string(&ev) {
+                                            if tx.send(Ok(Event::default().data(json_str))).await.is_err() {
+                                                let _ = child.kill().await;
+                                                return;
+                                            }
+                                        }
+                                    }
+                                    ParsedStreamItem::ContentDelta(delta) => {
+                                        accumulated_text.push_str(&delta);
+                                        let ev = TtagyStreamEvent::ContentDelta {
+                                            session_id: session_id.clone(),
+                                            text_delta: delta,
+                                            accumulated_chars: accumulated_text.chars().count(),
+                                            elapsed_ms,
+                                        };
+                                        if let Ok(json_str) = serde_json::to_string(&ev) {
+                                            if tx.send(Ok(Event::default().data(json_str))).await.is_err() {
+                                                let _ = child.kill().await;
+                                                return;
+                                            }
+                                        }
+                                    }
+                                    ParsedStreamItem::Done { content, thinking_content: tc, usage } => {
+                                        if !content.is_empty() {
+                                            accumulated_text = content;
+                                        }
+                                        let final_thinking = tc.or_else(|| {
+                                            if accumulated_thinking.is_empty() { None } else { Some(accumulated_thinking.clone()) }
+                                        });
+                                        let ev = TtagyStreamEvent::Done {
+                                            session_id: session_id.clone(),
+                                            full_content: accumulated_text.clone(),
+                                            thinking_content: final_thinking,
+                                            elapsed_ms,
+                                            prompt_tokens: usage.as_ref().and_then(|u| u.prompt_tokens),
+                                            output_tokens: usage.as_ref().and_then(|u| u.output_tokens),
+                                        };
+                                        if let Ok(json_str) = serde_json::to_string(&ev) {
+                                            let _ = tx.send(Ok(Event::default().data(json_str))).await;
+                                        }
+                                        let _ = child.kill().await;
+                                        return;
+                                    }
+                                    ParsedStreamItem::Error { code, message } => {
+                                        let ev = TtagyStreamEvent::Error {
+                                            session_id: session_id.clone(),
+                                            error_code: code,
+                                            error_message: message,
+                                            is_retryable: false,
+                                        };
+                                        if let Ok(json_str) = serde_json::to_string(&ev) {
+                                            let _ = tx.send(Ok(Event::default().data(json_str))).await;
+                                        }
+                                        let _ = child.kill().await;
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                        Ok(Ok(None)) => {
+                            // EOF
+                            let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+                            let stderr_logs = if let Some(ref d) = stderr_drainer {
+                                d.get_logs().await
+                            } else {
+                                String::new()
+                            };
+
+                            if accumulated_text.is_empty() && !stderr_logs.trim().is_empty() {
+                                let ev = TtagyStreamEvent::Error {
                                     session_id: session_id.clone(),
-                                    text_delta: delta,
-                                    elapsed_ms,
+                                    error_code: "EXECUTION_EMPTY_OUTPUT".into(),
+                                    error_message: format!("Worker produced empty stdout. Stderr: {}", stderr_logs),
+                                    is_retryable: false,
                                 };
                                 if let Ok(json_str) = serde_json::to_string(&ev) {
                                     let _ = tx.send(Ok(Event::default().data(json_str))).await;
                                 }
-                            }
-                            ParsedChunk::ContentDelta(delta) => {
-                                accumulated_text.push_str(&delta);
-                                let ev = TtagyStreamEvent::ContentDelta {
-                                    session_id: session_id.clone(),
-                                    text_delta: delta,
-                                    accumulated_chars: accumulated_text.chars().count(),
-                                    elapsed_ms,
-                                };
-                                if let Ok(json_str) = serde_json::to_string(&ev) {
-                                    let _ = tx.send(Ok(Event::default().data(json_str))).await;
-                                }
-                            }
-                            ParsedChunk::Result(res) => {
-                                if accumulated_text.is_empty() {
-                                    accumulated_text = res;
-                                }
+                            } else {
                                 let ev = TtagyStreamEvent::Done {
                                     session_id: session_id.clone(),
-                                    full_content: accumulated_text.clone(),
-                                    thinking_content: if accumulated_thinking.is_empty() { None } else { Some(accumulated_thinking.clone()) },
+                                    full_content: accumulated_text,
+                                    thinking_content: if accumulated_thinking.is_empty() { None } else { Some(accumulated_thinking) },
                                     elapsed_ms,
                                     prompt_tokens: None,
                                     output_tokens: None,
@@ -208,72 +323,52 @@ async fn stream_handler(
                                 if let Ok(json_str) = serde_json::to_string(&ev) {
                                     let _ = tx.send(Ok(Event::default().data(json_str))).await;
                                 }
-                                let _ = child.kill().await;
-                                break;
                             }
-                            ParsedChunk::Error(err_msg) => {
-                                let ev = TtagyStreamEvent::Error {
-                                    session_id: session_id.clone(),
-                                    error_code: "AGY_ERROR".into(),
-                                    error_message: err_msg,
-                                    is_retryable: false,
-                                };
-                                if let Ok(json_str) = serde_json::to_string(&ev) {
-                                    let _ = tx.send(Ok(Event::default().data(json_str))).await;
-                                }
-                                let _ = child.kill().await;
-                                break;
+                            break;
+                        }
+                        Ok(Err(e)) => {
+                            let _ = child.kill().await;
+                            let err_event = TtagyStreamEvent::Error {
+                                session_id: session_id.clone(),
+                                error_code: "IO_ERROR".into(),
+                                error_message: format!("Stream read IO error: {}", e),
+                                is_retryable: false,
+                            };
+                            if let Ok(json_str) = serde_json::to_string(&err_event) {
+                                let _ = tx.send(Ok(Event::default().data(json_str))).await;
                             }
-                            ParsedChunk::Ignored => {}
+                            break;
                         }
-                    }
-                    Ok(Ok(None)) => {
-                        let elapsed_ms = start_time.elapsed().as_secs_f64() * 1000.0;
-                        let ev = TtagyStreamEvent::Done {
-                            session_id: session_id.clone(),
-                            full_content: accumulated_text,
-                            thinking_content: if accumulated_thinking.is_empty() { None } else { Some(accumulated_thinking) },
-                            elapsed_ms,
-                            prompt_tokens: None,
-                            output_tokens: None,
-                        };
-                        if let Ok(json_str) = serde_json::to_string(&ev) {
-                            let _ = tx.send(Ok(Event::default().data(json_str))).await;
+                        Err(_) => {
+                            // Timeout
+                            let stderr_logs = if let Some(ref d) = stderr_drainer {
+                                d.get_logs().await
+                            } else {
+                                String::new()
+                            };
+                            let _ = child.kill().await;
+                            let err_event = TtagyStreamEvent::Error {
+                                session_id: session_id.clone(),
+                                error_code: "TIMEOUT".into(),
+                                error_message: format!(
+                                    "Request timed out after {} seconds. Recent stderr: {}",
+                                    timeout_secs,
+                                    if stderr_logs.is_empty() { "None" } else { &stderr_logs }
+                                ),
+                                is_retryable: true,
+                            };
+                            if let Ok(json_str) = serde_json::to_string(&err_event) {
+                                let _ = tx.send(Ok(Event::default().data(json_str))).await;
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    Ok(Err(e)) => {
-                        let _ = child.kill().await;
-                        let err_event = TtagyStreamEvent::Error {
-                            session_id: session_id.clone(),
-                            error_code: "IO_ERROR".into(),
-                            error_message: format!("Stream read IO error: {}", e),
-                            is_retryable: false,
-                        };
-                        if let Ok(json_str) = serde_json::to_string(&err_event) {
-                            let _ = tx.send(Ok(Event::default().data(json_str))).await;
-                        }
-                        break;
-                    }
-                    Err(_) => {
-                        // Timeout
-                        let _ = child.kill().await;
-                        let err_event = TtagyStreamEvent::Error {
-                            session_id: session_id.clone(),
-                            error_code: "TIMEOUT".into(),
-                            error_message: format!("Request timed out after {} seconds", timeout_secs),
-                            is_retryable: true,
-                        };
-                        if let Ok(json_str) = serde_json::to_string(&err_event) {
-                            let _ = tx.send(Ok(Event::default().data(json_str))).await;
-                        }
-                        break;
                     }
                 }
             }
         }
     });
 
-    let stream = ReceiverStream::new(rx);
-    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+    let receiver_stream = ReceiverStream::new(rx);
+    let guarded_stream = GuardedStream::new(receiver_stream, cancel_token);
+    Ok(Sse::new(guarded_stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
 }

@@ -1,0 +1,17 @@
+{
+  "name": "stream_normal",
+  "scenario": "stream_normal",
+  "request": {
+    "prompt": "scenario:stream_normal",
+    "model": "gemini-3.7-flash",
+    "effort": "low"
+  },
+  "expected_event_types": [
+    "agy:init",
+    "agy:thinking_delta",
+    "agy:content_delta",
+    "agy:content_delta",
+    "agy:done"
+  ],
+  "expected_content": "你好，我是 Antigravity AI 助手。很高兴为您服务！"
+}

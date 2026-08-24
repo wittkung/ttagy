@@ -1,4 +1,5 @@
-import { streamChatFallback } from "./fallback.ts";
+import http from "node:http";
+import { streamChatFallback, extractStructuredJson, repairIncompleteJson } from "./fallback.ts";
 import type { TtagyRequest, TtagyResponse, TtagyStreamEvent } from "./types.ts";
 
 export type * from "./types.ts";
@@ -7,6 +8,8 @@ export * from "./fallback.ts";
 export interface ClientOptions {
   /** 远程私有节点地址，如 "http://100.64.0.1:8970" 或 "https://agent.yourdomain.com" */
   baseUrl?: string;
+  /** 本地 Unix Domain Socket 路径，如 "/tmp/ttagy.sock" (Node.js 环境可用) */
+  socketPath?: string;
   /** 访问私有节点所需的安全 Bearer Token */
   authToken?: string;
   /** 当未配置远程节点或连接失败时，是否自动回退至本地沙箱直调 */
@@ -15,11 +18,13 @@ export interface ClientOptions {
 
 export class TtagyClient {
   private baseUrl?: string;
+  private socketPath?: string;
   private authToken?: string;
   private autoFallback: boolean;
 
   constructor(options?: ClientOptions) {
     this.baseUrl = options?.baseUrl?.replace(/\/+$/, "");
+    this.socketPath = options?.socketPath;
     this.authToken = options?.authToken;
     this.autoFallback = options?.autoFallback ?? true;
   }
@@ -28,7 +33,7 @@ export class TtagyClient {
    * 发起流式对话
    */
   async *streamChat(request: TtagyRequest): AsyncGenerator<TtagyStreamEvent, void, unknown> {
-    // 1. 若配置了远程节点，优先通过 HTTP/SSE 请求远程 Agent 节点
+    // 1. 若配置了远程 HTTP 节点，通过 HTTP/SSE 请求
     if (this.baseUrl) {
       try {
         const headers: Record<string, string> = {
@@ -42,6 +47,7 @@ export class TtagyClient {
           method: "POST",
           headers,
           body: JSON.stringify(request),
+          signal: request.signal,
         });
 
         if (!res.ok) {
@@ -81,6 +87,16 @@ export class TtagyClient {
         }
         return;
       } catch (err) {
+        if (request.signal?.aborted) {
+          yield {
+            type: "agy:error",
+            sessionId: request.sessionId || "unknown",
+            errorCode: "ABORTED",
+            errorMessage: "Request aborted by client",
+            isRetryable: false,
+          };
+          return;
+        }
         if (!this.autoFallback) {
           yield {
             type: "agy:error",
@@ -91,7 +107,6 @@ export class TtagyClient {
           };
           return;
         }
-        // 自动降级至本地 Fallback
       }
     }
 
@@ -151,7 +166,7 @@ export class TtagyClient {
   }
 
   /**
-   * 强类型 JSON 确定性推导执行器 (带自动代码块剥离与重试)
+   * 强类型 JSON 确定性推导执行器 (语法感知状态机解析 + 智能重试)
    */
   async runJson<T = any>(request: TtagyRequest): Promise<T> {
     const retries = request.retries ?? 2;
@@ -168,30 +183,8 @@ export class TtagyClient {
           throw new Error(response.errorMessage || "Ttagy returned error status");
         }
 
-        let raw = response.content.trim();
-
-        // 1. 尝试直接解析
-        try {
-          return JSON.parse(raw) as T;
-        } catch {}
-
-        // 2. 剥离 Markdown 代码块 ```json ... ```
-        const markdownMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        if (markdownMatch && markdownMatch[1]) {
-          try {
-            return JSON.parse(markdownMatch[1].trim()) as T;
-          } catch {}
-        }
-
-        // 3. 提取首尾大括号
-        const firstBrace = raw.indexOf("{");
-        const lastBrace = raw.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-          const candidate = raw.slice(firstBrace, lastBrace + 1);
-          return JSON.parse(candidate) as T;
-        }
-
-        throw new Error(`无法从 ttagy 输出中提取合法 JSON (长度: ${raw.length})`);
+        const jsonStr = extractStructuredJson(response.content);
+        return JSON.parse(jsonStr) as T;
       } catch (err: any) {
         lastError = err;
         if (attempt <= retries) {

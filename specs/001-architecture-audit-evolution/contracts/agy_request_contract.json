@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TtagyRequestContract",
+  "description": "Draft-07 strongly-typed request schema for Local AI Agent Daemon and SDK",
+  "type": "object",
+  "required": ["prompt"],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model": {
+      "type": "string",
+      "default": "gemini-3.7-flash"
+    },
+    "effort": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "none"],
+      "default": "high"
+    },
+    "temperature": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 2.0
+    },
+    "system_instruction": {
+      "type": "string"
+    },
+    "json_schema": {
+      "type": "string"
+    },
+    "timeout_secs": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 600,
+      "default": 60
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "name": "quota_error",
+  "scenario": "quota_error",
+  "request": {
+    "prompt": "scenario:quota_error",
+    "model": "gemini-3.7-flash",
+    "effort": "low"
+  },
+  "expected_event_types": [
+    "agy:init",
+    "agy:error"
+  ],
+  "expected_error_contains": "Resource quota exceeded"
+}

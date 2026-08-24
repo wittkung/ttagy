@@ -3,6 +3,7 @@ members = [
     "crates/ttagy-core",
     "crates/ttagy-client",
     "crates/ttagyd",
+    "crates/mock-agy",
 ]
 resolver = "2"
 

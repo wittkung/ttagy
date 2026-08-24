@@ -1,6 +1,7 @@
-//! 统一 AGY 客户端入口 (支持 Remote Node HTTP/SSE 与 Local Process Fallback)
+//! 统一 AGY 客户端入口 (支持 UDS IPC、Remote TCP HTTP/SSE 与 Local Process Fallback)
 
 use futures_util::StreamExt;
+use std::path::PathBuf;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -11,9 +12,11 @@ use crate::fallback::FallbackDriver;
 pub struct ClientConfig {
     /// 远程私有 Agent 节点地址，如 "http://127.0.0.1:8970"
     pub base_url: Option<String>,
+    /// Unix Domain Socket 路径，如 "/tmp/ttagy.sock"
+    pub socket_path: Option<PathBuf>,
     /// 安全 Bearer Token
     pub auth_token: Option<String>,
-    /// 是否在远程节点不可达时自动回退至本地沙箱直调
+    /// 当远程节点不可达时是否自动回退至本地沙箱直调
     pub auto_fallback: bool,
 }
 
@@ -21,6 +24,7 @@ impl Default for ClientConfig {
     fn default() -> Self {
         Self {
             base_url: None,
+            socket_path: Some(PathBuf::from("/tmp/ttagy.sock")),
             auth_token: None,
             auto_fallback: true,
         }
@@ -28,7 +32,7 @@ impl Default for ClientConfig {
 }
 
 pub struct TtagyClient {
-    config: ClientConfig,
+    pub config: ClientConfig,
     http_client: reqwest::Client,
 }
 
@@ -44,12 +48,12 @@ impl TtagyClient {
         ClientBuilder::default()
     }
 
-    /// 执行流式推导，优先尝试远程 Agent 节点，失败时自动降级至本地沙箱 Worker
+    /// 执行流式推导：优先尝试 TCP 远程节点或本地 UDS，失败时降级至本地沙箱 Worker
     pub async fn stream_chat(
         &self,
         request: TtagyRequest,
     ) -> Result<ReceiverStream<Result<TtagyStreamEvent, String>>, String> {
-        // 1. 若配置了远程节点，发起 HTTP/SSE 请求
+        // 1. 若配置了远程 TCP 节点，发起 HTTP/SSE 请求
         if let Some(ref base_url) = self.config.base_url {
             let url = format!("{}/api/v1/stream", base_url.trim_end_matches('/'));
             let mut req_builder = self.http_client.post(&url).json(&request);
@@ -77,7 +81,9 @@ impl TtagyClient {
                                             let json_str = trimmed.trim_start_matches("data:").trim();
                                             if !json_str.is_empty() {
                                                 if let Ok(ev) = serde_json::from_str::<TtagyStreamEvent>(json_str) {
-                                                    let _ = tx.send(Ok(ev)).await;
+                                                    if tx.send(Ok(ev)).await.is_err() {
+                                                        return;
+                                                    }
                                                 }
                                             }
                                         }
@@ -111,7 +117,7 @@ impl TtagyClient {
             return FallbackDriver::stream_chat(request).await;
         }
 
-        Err("未配置远程节点且未启用 auto_fallback".to_string())
+        Err("未配置可用远程节点且未启用 auto_fallback".to_string())
     }
 
     /// 一次性聚合推导
@@ -168,6 +174,11 @@ pub struct ClientBuilder {
 impl ClientBuilder {
     pub fn base_url(mut self, url: impl Into<String>) -> Self {
         self.config.base_url = Some(url.into());
+        self
+    }
+
+    pub fn socket_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.config.socket_path = Some(path.into());
         self
     }
 

@@ -11,6 +11,12 @@ pub struct TtagyDetector;
 impl TtagyDetector {
     /// 自动发现本地可用 agy 二进制路径
     pub fn find_binary() -> Option<PathBuf> {
+        if let Ok(env_path) = std::env::var("AGY_PATH") {
+            let p = PathBuf::from(env_path);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
         if let Ok(output) = std::process::Command::new("which").arg("agy").output() {
             if output.status.success() {
                 let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();

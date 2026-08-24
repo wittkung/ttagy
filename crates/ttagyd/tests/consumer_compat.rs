@@ -2,7 +2,6 @@ use ttagy_core::{TtagyRequest, TtagyStreamEvent};
 
 #[test]
 fn test_ttsubs_legacy_payload_compatibility() {
-    // 模拟 TTSubs 传入的典型请求 JSON (含可选字段与缺失字段)
     let json_payload = r#"{
         "session_id": "ttsubs_1740000000000",
         "prompt": "请校对以下字幕：你好世界",
@@ -23,7 +22,15 @@ fn test_ttsubs_legacy_payload_compatibility() {
 
 #[test]
 fn test_stream_event_backward_compatibility() {
-    // 确保向后兼容所有 4 类核心事件
+    let init_event = TtagyStreamEvent::Init {
+        session_id: "s0".into(),
+        model: "gemini-3.7-flash".into(),
+        effort: "low".into(),
+        backend_mode: "daemon_uds".into(),
+    };
+    let json = serde_json::to_string(&init_event).unwrap();
+    assert!(json.contains(r#""backend_mode":"daemon_uds""#));
+
     let content_delta = TtagyStreamEvent::ContentDelta {
         session_id: "s1".into(),
         text_delta: "Hello".into(),

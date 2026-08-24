@@ -1,6 +1,6 @@
 //! TTAgy 宿主节点守护服务 (Private Agent Host Node Daemon)
 //!
-//! 具备物理版本隔离路由体系，挂载 /api/v1 (已冻结 API) 与未来版本。
+//! 支持 Unix Domain Socket (/tmp/ttagy.sock) 极速本地 IPC 与 TCP HTTP/SSE 远程双模并发监听。
 
 mod v1;
 
@@ -13,14 +13,17 @@ use axum::{
     Router,
 };
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
+use tower::Service;
 use tower_http::cors::{Any, CorsLayer};
 use v1::AppState;
 
 struct Config {
     host: String,
     port: u16,
+    socket_path: Option<PathBuf>,
     token: Option<String>,
     max_concurrency: usize,
 }
@@ -30,6 +33,10 @@ impl Config {
         let args: Vec<String> = std::env::args().collect();
         let mut host = "127.0.0.1".to_string();
         let mut port = 8970u16;
+        let mut socket_path = std::env::var("TTAGY_SOCKET_PATH")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(|| Some(PathBuf::from("/tmp/ttagy.sock")));
         let mut token = std::env::var("TTAGY_AUTH_TOKEN").ok();
         let mut max_concurrency = 4usize;
 
@@ -50,6 +57,15 @@ impl Config {
                         i += 1;
                     }
                 }
+                "--socket" | "-s" => {
+                    if i + 1 < args.len() {
+                        socket_path = Some(PathBuf::from(args[i + 1].clone()));
+                        i += 1;
+                    }
+                }
+                "--no-socket" => {
+                    socket_path = None;
+                }
                 "--token" | "-t" => {
                     if i + 1 < args.len() {
                         token = Some(args[i + 1].clone());
@@ -69,14 +85,23 @@ impl Config {
             i += 1;
         }
 
-        Self { host, port, token, max_concurrency }
+        Self {
+            host,
+            port,
+            socket_path,
+            token,
+            max_concurrency,
+        }
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::parse_args();
-    println!("⚡ Starting TTAgy Private Node on {}:{} (Concurrency: {})", config.host, config.port, config.max_concurrency);
+    println!(
+        "⚡ Starting TTAgy Daemon on {}:{} (Concurrency: {})",
+        config.host, config.port, config.max_concurrency
+    );
 
     let state = Arc::new(AppState {
         auth_token: config.token.clone(),
@@ -98,11 +123,65 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .layer(cors);
 
-    let addr: SocketAddr = format!("{}:{}", config.host, config.port).parse()?;
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("🚀 TTAgy Private Node ready. Accepting connections at http://{}", addr);
+    let mut tasks = Vec::new();
 
-    axum::serve(listener, app).await?;
+    // 1. TCP 监听服务
+    let addr: SocketAddr = format!("{}:{}", config.host, config.port).parse()?;
+    let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
+    println!("🚀 TTAgy TCP Node ready at http://{}", addr);
+    let tcp_app = app.clone();
+    tasks.push(tokio::spawn(async move {
+        let _ = axum::serve(tcp_listener, tcp_app).await;
+    }));
+
+    // 2. Unix Domain Socket (UDS) 极速本地 IPC 服务
+    #[cfg(unix)]
+    if let Some(sock_path) = config.socket_path {
+        if sock_path.exists() {
+            let _ = tokio::fs::remove_file(&sock_path).await;
+        }
+        if let Some(parent) = sock_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+
+        let uds_listener = tokio::net::UnixListener::bind(&sock_path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o600));
+        }
+        println!("⚡ TTAgy UDS IPC ready at unix://{}", sock_path.display());
+
+        let uds_app = app;
+        tasks.push(tokio::spawn(async move {
+            loop {
+                match uds_listener.accept().await {
+                    Ok((stream, _)) => {
+                        let io = hyper_util::rt::TokioIo::new(stream);
+                        let tower_service = uds_app.clone();
+                        tokio::spawn(async move {
+                            let hyper_service = hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+                                let mut s = tower_service.clone();
+                                async move {
+                                    let req = req.map(Body::new);
+                                    let resp = s.call(req).await.unwrap();
+                                    Ok::<_, std::convert::Infallible>(resp)
+                                }
+                            });
+                            let _ = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
+                                .serve_connection(io, hyper_service)
+                                .await;
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("[ttagyd] UDS accept error: {}", e);
+                    }
+                }
+            }
+        }));
+    }
+
+    futures_util::future::select_all(tasks).await.0?;
     Ok(())
 }
 
