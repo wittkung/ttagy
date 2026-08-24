@@ -11,5 +11,5 @@
   },
   "keywords": ["ai", "local-ai", "antigravity", "agy", "gemini", "agent"],
   "author": "Antigravity Developer",
-  "license": "MIT"
+  "license": "BSD-3-Clause OR Apache-2.0"
 }

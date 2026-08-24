@@ -22,4 +22,6 @@
 | `crates/agyd` | Rust Binary | 本地常驻守护进程服务 |
 | `packages/agy-client` | TypeScript SDK | 支持 Node.js、Electron 与 Web 运行时 |
 | `python/agy_client` | Python SDK | 支持 asyncio 异步流式生成器 |
-| `specs/contracts` | Draft-07 JSON | 强类型接口与事件契约 (Discriminated Union) |
+## 📄 开源许可证
+
+本项目采用 **`BSD-3-Clause OR Apache-2.0`** 双开源许可证，与 TTZip Core 保持一致。详见 [LICENSE-BSD](./LICENSE-BSD) 与 [LICENSE-APACHE](./LICENSE-APACHE)。
