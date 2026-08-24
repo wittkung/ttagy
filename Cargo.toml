@@ -1,0 +1,21 @@
+[workspace]
+members = [
+    "crates/agy-core",
+    "crates/agy-client",
+    "crates/agyd",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Antigravity Developer"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/wittkung/agy-bridge"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

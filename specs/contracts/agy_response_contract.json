@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgyResponseContract",
+  "description": "Draft-07 strongly-typed unary response schema for Local AI Agent Daemon and SDK",
+  "type": "object",
+  "required": ["session_id", "status", "content", "elapsed_ms"],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["success", "error", "aborted"]
+    },
+    "content": {
+      "type": "string"
+    },
+    "thinking_content": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "elapsed_ms": {
+      "type": "number",
+      "minimum": 0.0
+    },
+    "prompt_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "output_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "error_message": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgyStreamEventContract",
+  "description": "Draft-07 strongly-typed discriminated union contract for Local AI streaming telemetry events",
+  "type": "object",
+  "required": ["type", "session_id"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "agy:init",
+        "agy:thinking_delta",
+        "agy:content_delta",
+        "agy:done",
+        "agy:error"
+      ]
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "oneOf": [
+    {
+      "title": "AgyInitEvent",
+      "type": "object",
+      "required": ["type", "session_id", "model", "effort", "backend_mode"],
+      "properties": {
+        "type": { "type": "string", "enum": ["agy:init"] },
+        "session_id": { "type": "string", "minLength": 1 },
+        "model": { "type": "string" },
+        "effort": { "type": "string" },
+        "backend_mode": { "type": "string", "enum": ["daemon_ipc", "fallback_direct_spawn"] }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "AgyThinkingDeltaEvent",
+      "type": "object",
+      "required": ["type", "session_id", "text_delta", "elapsed_ms"],
+      "properties": {
+        "type": { "type": "string", "enum": ["agy:thinking_delta"] },
+        "session_id": { "type": "string", "minLength": 1 },
+        "text_delta": { "type": "string" },
+        "elapsed_ms": { "type": "number", "minimum": 0.0 }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "AgyContentDeltaEvent",
+      "type": "object",
+      "required": ["type", "session_id", "text_delta", "accumulated_chars", "elapsed_ms"],
+      "properties": {
+        "type": { "type": "string", "enum": ["agy:content_delta"] },
+        "session_id": { "type": "string", "minLength": 1 },
+        "text_delta": { "type": "string" },
+        "accumulated_chars": { "type": "integer", "minimum": 0 },
+        "elapsed_ms": { "type": "number", "minimum": 0.0 }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "AgyDoneEvent",
+      "type": "object",
+      "required": ["type", "session_id", "full_content", "elapsed_ms"],
+      "properties": {
+        "type": { "type": "string", "enum": ["agy:done"] },
+        "session_id": { "type": "string", "minLength": 1 },
+        "full_content": { "type": "string" },
+        "thinking_content": { "type": "string" },
+        "elapsed_ms": { "type": "number", "minimum": 0.0 },
+        "prompt_tokens": { "type": ["integer", "null"] },
+        "output_tokens": { "type": ["integer", "null"] }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "AgyErrorEvent",
+      "type": "object",
+      "required": ["type", "session_id", "error_code", "error_message", "is_retryable"],
+      "properties": {
+        "type": { "type": "string", "enum": ["agy:error"] },
+        "session_id": { "type": "string", "minLength": 1 },
+        "error_code": { "type": "string", "minLength": 1 },
+        "error_message": { "type": "string", "minLength": 1 },
+        "is_retryable": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@agy/client",
+  "version": "0.1.0",
+  "description": "High-performance TypeScript/JavaScript client SDK for AGY Bridge",
+  "type": "module",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "node --experimental-strip-types --test src/__tests__/*.test.mjs"
+  },
+  "keywords": ["ai", "local-ai", "antigravity", "agy", "gemini", "agent"],
+  "author": "Antigravity Developer",
+  "license": "MIT"
+}
